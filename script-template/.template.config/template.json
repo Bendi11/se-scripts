@@ -1,0 +1,46 @@
+{
+    "$schema": "http://json.schemastore.org/template",
+    "identity": "SpaceEngineers.ScriptTemplate",
+    "name": "Space Engineers Script",
+    "shortName": "se-script",
+    "sourceName": "script-template",
+    "preferNameDirectory": true,
+    "primaryOutputs": [
+        { "path": "NAME.csproj" }
+    ],
+    "symbols": {
+        "source_rename": {
+            "type": "derived",
+            "valueSource": "name",
+            "replaces": "@NAME@",
+            "fileRename": "NAME",
+            "valueTransform": "name",
+        },
+        "game_dir": {
+            "type": "parameter",
+            "replaces": "@GAME_DIR@"
+        },
+        "script_dir": {
+            "type": "parameter",
+            "replaces": "@SCRIPT_DIR@"
+        }
+    },
+    "forms": {
+        "name": {
+            "identifier": "firstUpperCase"
+        }
+    },
+    "postActions": [
+    {
+            "id": "restore",
+            "description": "Restore NuGet packages required by this project.",
+            "manualInstructions": [
+            {
+                "text": "Run 'dotnet restore'"
+            }
+            ],
+        "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+        "continueOnError": true
+    },
+    ]
+}
