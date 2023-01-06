@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT=$(echo '@NAME@' | sed 's/\s/_/g')
+SCRIPT=$(echo 'Flight Computer' | sed 's/\s/_/g')
 
 PATTERN="using Sandbox\\.Game\\.EntityComponents;\\nusing Sandbox\\.ModAPI\\.Ingame;\\nusing Sandbox\\.ModAPI\\.Interfaces;\\nusing SpaceEngineers\\.Game\\.ModAPI\\.Ingame;\\nusing System\\.Collections\\.Generic;\\nusing System\\.Collections;\\nusing System\\.Linq;\\nusing System\\.Text;\\nusing System;\\nusing VRage\\.Collections;\\nusing VRage\\.Game\\.Components;\\nusing VRage\\.Game\\.GUI\\.TextPanel;\\nusing VRage\\.Game\\.ModAPI\\.Ingame\\.Utilities;\\nusing VRage\\.Game\\.ModAPI\\.Ingame;\\nusing VRage\\.Game\\.ObjectBuilders\\.Definitions;\\nusing VRage\\.Game;\\nusing VRage;\\nusing VRageMath;\\nusing System\\.Collections\\.Immutable;\\n\\nnamespace IngameScript {\\n    partial class Program: MyGridProgram {"
 

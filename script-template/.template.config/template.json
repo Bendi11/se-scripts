@@ -15,14 +15,6 @@
             "replaces": "@NAME@",
             "fileRename": "NAME",
             "valueTransform": "name",
-        },
-        "game_dir": {
-            "type": "parameter",
-            "replaces": "@GAME_DIR@"
-        },
-        "script_dir": {
-            "type": "parameter",
-            "replaces": "@SCRIPT_DIR@"
         }
     },
     "forms": {

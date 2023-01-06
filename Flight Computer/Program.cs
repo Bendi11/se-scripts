@@ -20,7 +20,7 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-
+         
         public Program() {
             
         }
