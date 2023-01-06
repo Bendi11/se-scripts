@@ -20,9 +20,10 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-         
+        IMyGyro gyro;
+
         public Program() {
-            
+            gyro = GridTerminalSystem.GetBlockWithName("Gyro") as IMyGyro ?? throw new ArgumentNullException(); 
         }
 
         public void Save() {
