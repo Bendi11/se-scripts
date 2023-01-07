@@ -20,37 +20,75 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-        IMyAirtightDoorBase cabin_door;
+        IMyDoor cabin_door;
         IMySensorBlock cabin_sensor;
+        List<IMyAirVent> vents = new List<IMyAirVent>();
         IMyCockpit cockpit;
         MyTuple<IMyCockpit, IMyCockpit> benches;
+        List<IMyGasTank> oxygen_tanks = new List<IMyGasTank>();
+        IMyReflectorLight decom_light;
 
-        IMyTextSurface computer_screen;
-        
-        int log_message_count = 0;
-        int num_crew_in_cabin = 0;
+        List<IMySoundBlock> sound_blocks = new List<IMySoundBlock>();
+        string sound_b4_alarm = null;
+        bool playing_b4_alarm = false;
 
         List<MyDetectedEntityInfo> detected = new List<MyDetectedEntityInfo>();
         
         PreFlightChecklist checklist;
         IEnumerator<PreFlightChecklist.ShouldRender> checklist_sm = null;
 
+        static Logger log;
+
+        Dictionary<string, Action> commands = new Dictionary<string, Action>(StringComparer.OrdinalIgnoreCase);
+        MyCommandLine cmdline = new MyCommandLine();
+
+        Action onDoorStateChange = null;
+        Action onVentDepressurize = null;
+
+        int decom_countdown = -1;
+
+        public static T nnull<T>(T me, string msg = null) {
+            msg = msg ?? typeof(T).ToString() + " is null";
+            if(me == null) {
+                log.Error(msg);
+                throw new Exception(msg);
+            } 
+            return me;
+        }
+        public static List<T> nnull<T>(List<T> list, string msg = null) {
+            msg = msg ?? typeof(List<T>).ToString() + " is empty";
+            if(list.Count == 0) {
+                log.Error(msg);
+                throw new Exception(msg);
+            }
+            return list;
+        }
+
         public Program() {
-            Runtime.UpdateFrequency |= UpdateFrequency.Update100;
-            cabin_door = GridTerminalSystem.GetBlockWithName("CABIN DOOR") as IMyAirtightDoorBase; 
-            cabin_sensor = GridTerminalSystem.GetBlockWithName("CABIN SENSOR") as IMySensorBlock;
-            cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyCockpit;
-            benches.Item1 = GridTerminalSystem.GetBlockWithName("Bench 1") as IMyCockpit;
-            benches.Item2 = GridTerminalSystem.GetBlockWithName("Bench 2") as IMyCockpit;
+            log = new Logger(Me.GetSurface(0));
+            Runtime.UpdateFrequency |= UpdateFrequency.Update100 | UpdateFrequency.Update10;
+            cabin_door = nnull(GridTerminalSystem.GetBlockWithName("CABIN DOOR") as IMyDoor);
+            cabin_sensor = nnull(GridTerminalSystem.GetBlockWithName("CABIN SENSOR") as IMySensorBlock);
+            cockpit = nnull(GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyCockpit);
+            benches.Item1 = nnull(GridTerminalSystem.GetBlockWithName("Bench 1") as IMyCockpit);
+            benches.Item2 = nnull(GridTerminalSystem.GetBlockWithName("Bench 2") as IMyCockpit);
+            decom_light = nnull(GridTerminalSystem.GetBlockWithName("CABIN DECOM LIGHT") as IMyReflectorLight);
+            GridTerminalSystem.GetBlockGroupWithName("O2 VENTS").GetBlocksOfType(vents);
+            GridTerminalSystem.GetBlockGroupWithName("OXYGEN TANKS").GetBlocksOfType(oxygen_tanks);
+            GridTerminalSystem.GetBlocksOfType(sound_blocks);
+            nnull(vents);
 
-            checklist = new PreFlightChecklist(cockpit, GridTerminalSystem);
+            decom_light.Radius = 13.3F;
+            decom_light.Intensity = 10F;
+            decom_light.Color = Color.Red;
+            decom_light.BlinkLength = 50F;
+            decom_light.Enabled = false;
+            
+            checklist = new PreFlightChecklist(log, cockpit, GridTerminalSystem, nnull(cockpit.GetSurface(0)));
 
-            computer_screen = Me.GetSurface(0);
-            computer_screen.BackgroundColor = Color.Black;
-            computer_screen.ContentType = ContentType.TEXT_AND_IMAGE;
-            computer_screen.Font = "Monospace";
-            computer_screen.FontColor = Color.Lime;
-            computer_screen.FontSize = 1.3F;
+            commands.Add("cabindoor", CabinDoorToggle);
+            commands.Add("preflight", Preflight);
+            CabinDoorClose();
         }
 
         public void Save() {
@@ -58,11 +96,10 @@ namespace IngameScript {
         }
 
         public void Main(string argument, UpdateType updateSource) {
-            if(updateSource.HasFlag(UpdateType.Once)) {
+            if(updateSource.HasFlag(UpdateType.Update10)) {
                 if(checklist_sm != null) {
                     if(checklist_sm.MoveNext()) {
-                        if(checklist_sm.Current == PreFlightChecklist.ShouldRender.Render) { checklist.RenderScreen(); }
-                        Runtime.UpdateFrequency |= UpdateFrequency.Once;
+                        if(checklist_sm.Current != PreFlightChecklist.ShouldRender.Unchanged) { checklist.RenderScreen(); }
                     } else {
                         checklist_sm.Dispose();
                         checklist_sm = null;
@@ -70,52 +107,191 @@ namespace IngameScript {
                     }
                 }
 
+                if(onDoorStateChange != null && cabin_door.Status != DoorStatus.Closing && cabin_door.Status != DoorStatus.Opening) {
+                    onDoorStateChange();
+                    onDoorStateChange = null;
+                }
+
+                if(onVentDepressurize != null) {
+                    bool o2_full = true;
+                    foreach(var tank in oxygen_tanks) { if(tank.FilledRatio < 0.999) { o2_full = false; break; } }
+                    bool depres = true;
+                    foreach(var vent in vents) { if(vent.GetOxygenLevel() > 0.001) { depres = false; break; }}
+
+                    if(o2_full || depres) {
+                        if(o2_full) {
+                            log.Log("O2 tank max: venting air");
+                        }
+                        onVentDepressurize();
+                        onVentDepressurize = null;
+                    }
+                }
+
                 return;
             }
 
             if(updateSource.HasFlag(UpdateType.Script) || updateSource.HasFlag(UpdateType.Trigger) || updateSource.HasFlag(UpdateType.Terminal)) {
-                Dispatch(argument);
+                if(cmdline.TryParse(argument)) {
+                    Dispatch();
+                } else {
+                    log.Error("Failed to parse command " + argument);
+                }
             }
-
              
 
             if((updateSource & UpdateType.Update100) == UpdateType.Update100) {
-                detected.Clear();
-                num_crew_in_cabin = 0;
-                cabin_sensor.DetectedEntities(detected);
-                foreach(var entity in detected) {
-                    if(entity.Relationship != MyRelationsBetweenPlayerAndBlock.Enemies) {
-                        num_crew_in_cabin += 1;
+                if(decom_countdown != -1) {
+                    decom_light.BlinkIntervalSeconds = decom_countdown > 1 ? 0.5F : 0.3F;
+                    decom_countdown -= 1;
+                    if(decom_countdown == -1) {
+                        foreach(var sound in sound_blocks) {
+                            sound.SelectedSound = sound_b4_alarm;
+                            if(playing_b4_alarm) {
+                                sound.Play();
+                            } else {
+                                sound.Stop();
+                            }
+                        }
+                        FinishDecomCountdown();
                     }
                 }
-
-                //if(cockpit.IsUnderControl) { num_crew_in_cabin += 1; }
-                if(benches.Item1.IsUnderControl) { num_crew_in_cabin += 1; }
-                if(benches.Item2.IsUnderControl) { num_crew_in_cabin += 1; }
-
-                Log("" + num_crew_in_cabin + " Soul" + (num_crew_in_cabin != 1 ? "s" : "") +" Aboard");
             }
         }
 
-        public void Dispatch(string arg) {
-            switch(arg) {
-                case "CABIN_DOOR_TOGGLE": CabinDoorToggle(); break;
-                case "PREFLIGHT_TOGGLE": if(checklist_sm == null) { checklist_sm = checklist.Run(); Runtime.UpdateFrequency |= UpdateFrequency.Once; } else { checklist_sm.Dispose(); checklist_sm = null; } break;
-                default: Log("Unknown Command " + arg); break;
+        public void Dispatch() {
+            string command = cmdline.Argument(0);
+            if(command == null) {
+                log.Error("no command");
+                return;
+            }
+            
+            Action action;
+            if(!commands.TryGetValue(command, out action) ) {
+                log.Error("undefined command " + command);
+                return;
+            }
+
+            action();
+        }
+
+        private void Preflight() {
+            if(checklist_sm == null) {
+                checklist_sm = checklist.Run();
+                Runtime.UpdateFrequency |= UpdateFrequency.Update10;
+            } else {
+                checklist_sm.Dispose();
+                checklist_sm = null;
+                checklist.Reset();
             }
         }
 
         private void CabinDoorToggle() {
+            if(decom_countdown != -1) { return; }
+            if(cabin_door.Status != DoorStatus.Closed) {
+                log.Log("cabin door seal");
+                CabinDoorClose();
+                return;
+            }
+
+            detected.Clear();
+            int num_crew_in_cabin = 0;
+            bool enemy = false;
+            cabin_sensor.DetectedEntities(detected);
+            foreach(var entity in detected) {
+                if(entity.Relationship != MyRelationsBetweenPlayerAndBlock.Enemies) {
+                    num_crew_in_cabin += 1;
+                } else {
+                    enemy = true;
+                }
+            }
+
+            bool pressurized = false;
+            foreach(var vent in vents) {
+                if(vent.GetOxygenLevel() > 0.001F) { pressurized = true; break; }
+            }
+            
+            if(pressurized && num_crew_in_cabin > 1) {
+                if(!enemy) {
+                    log.Log(">1 crew in cabin - await decom. sequence");
+                    decom_light.Enabled = true;
+                    decom_light.BlinkIntervalSeconds = 0.5F;
+                    decom_countdown = 3;
+                    foreach(var sound in sound_blocks) {
+                        sound_b4_alarm = sound.SelectedSound;
+                        playing_b4_alarm = sound.IsSoundSelected;
+                        sound.SelectedSound = "Alert 2";
+                        sound.Enabled = true;
+                        sound.Play();
+                    }
+                    return;
+                } else {
+                    log.Warn("hostiles present in cabin - skip decom. sequence");
+                }
+            }
+            
+            FinishDecomCountdown();
+        }
+
+        private void FinishDecomCountdown() {
+            decom_light.Enabled = false;
+            foreach(var vent in vents) {
+                vent.Depressurize = true;
+            }
+
+            onVentDepressurize = () => {
+                log.Log("green for cabin door egress");
+                cabin_door.Enabled = true;
+                cabin_door.OpenDoor();
+                foreach(var vent in vents) { vent.Depressurize = false; }
+                onDoorStateChange = () => {
+                    cabin_door.Enabled = false;
+                };
+            };
 
         }
 
-        private void Log(string msg) {
-            if(log_message_count >= 10) {
-                computer_screen.WriteText("", false);
-                log_message_count = 0;
+        private void CabinDoorClose() {
+            cabin_door.Enabled = true;
+            cabin_door.CloseDoor();
+            onDoorStateChange = () => {
+                cabin_door.Enabled = false;
+                foreach(var vent in vents) { if(vent.CanPressurize) { vent.Depressurize = false; } }
+            };
+            return;
+        }
+        
+        class Logger {
+            IMyTextSurface terminal;
+            int msg_count = 0;
+
+            public Logger(IMyTextSurface terminal) {
+                terminal.WriteText("", false);
+                this.terminal = terminal;
+                terminal.BackgroundColor = Color.Black;
+                terminal.ContentType = ContentType.TEXT_AND_IMAGE;
+                terminal.Font = "Monospace";
+                terminal.FontColor = Color.Lime;
+                terminal.FontSize = 1.3F;
             }
-            computer_screen.WriteText(msg + "\n", true);
-            log_message_count += 1; 
+
+            public void Error(string msg) { Log("[ERR]" + msg); }
+            public void Warn(string msg) { Log("[WRN]" + msg); }
+
+            public void Log(string msg) {
+                if(msg_count >= 10) {
+                    terminal.WriteText("", false);
+                    msg_count = 0;
+                }
+                
+                while(msg.Length > 0) {
+                    int len = Math.Min(20, msg.Length);
+                    terminal.WriteText(msg.Substring(0, len), true);
+                    msg = msg.Substring(len);
+                    terminal.WriteText("\n", true);
+                }
+
+                msg_count += 1; 
+            }
         }
 
         class PreFlightChecklist {
@@ -124,16 +300,18 @@ namespace IngameScript {
             List<IMyGasTank> reserve_tanks = new List<IMyGasTank>();
             List<IMyGasTank> main_tanks = new List<IMyGasTank>();
             List<IMyGasTank> oxygen_tanks = new List<IMyGasTank>();
+            List<IMyLandingGear> gears = new List<IMyLandingGear>();
+            IMyShipConnector connector;
             IMyShipController cockpit;
-
+            Logger log;
+            
+            [Flags]
             enum State {
-                Begin = 0,
                 EmergencyHydroTanksStockpiled = 1,
                 MainHydroTanksNonStockpile = 2,
-                HydroThrusterOn = 3,
-                OxygenTanksNotSetToStockpile = 4,
-                Undocked = 5,
-                COUNT,
+                HydroThrusterOn = 4,
+                OxygenTanksNotSetToStockpile = 8,
+                Undocked = 16,
             }
 
             public enum ShouldRender {
@@ -141,13 +319,13 @@ namespace IngameScript {
                 Unchanged,
             }
 
-            State state = State.Begin;
+            State state = 0;
 
-            public PreFlightChecklist(IMyShipController cockpit, IMyGridTerminalSystem gridTerminalSystem) {
-                screen = gridTerminalSystem.GetBlockWithName("PREFLIGHT LCD") as IMyTextSurface;
-                
+            public PreFlightChecklist(Logger log, IMyShipController cockpit, IMyGridTerminalSystem gridTerminalSystem, IMyTextSurface _screen) {
+                this.log = log;
+                screen = _screen;                
                 screen.Font = "Monospace";
-                screen.FontSize = 2F;
+                screen.FontSize = 0.9F;
                 screen.ClearImagesFromSelection();
                 screen.Alignment = TextAlignment.CENTER;
                 screen.FontColor = Color.Lime;
@@ -157,65 +335,100 @@ namespace IngameScript {
                 gridTerminalSystem.GetBlockGroupWithName("RESERVE HYDROGEN").GetBlocksOfType(reserve_tanks);
                 gridTerminalSystem.GetBlockGroupWithName("MAIN HYDROGEN").GetBlocksOfType(main_tanks);
                 gridTerminalSystem.GetBlockGroupWithName("OXYGEN TANKS").GetBlocksOfType(oxygen_tanks);
+                gridTerminalSystem.GetBlockGroupWithName("LANDING GEAR").GetBlocksOfType(gears);
+
+                nnull(hydro_thrust);
+                nnull(reserve_tanks);
+                nnull(main_tanks);
+                nnull(oxygen_tanks);
+                nnull(gears);
+                connector = nnull(gridTerminalSystem.GetBlockWithName("CONNECTOR") as IMyShipConnector);
                 this.cockpit = cockpit;
             }
             
             public void Reset() {
-                state = State.Begin;
+                state = 0;
+                green_renders = 0;
+                screen.ContentType = ContentType.SCRIPT;
                 screen.WriteText("");
             }
 
             public IEnumerator<ShouldRender> Run() {
-                state = State.Begin;
+                state = 0;
+                State ns = 0;
+                screen.ContentType = ContentType.TEXT_AND_IMAGE;
                 
-                while(state != State.COUNT) {
-                    switch(state) {
-                        case State.Begin: break;
-                        case State.EmergencyHydroTanksStockpiled:
-                            foreach(var tank in reserve_tanks) {
-                                if(tank.FilledRatio < 0.95) { yield return ShouldRender.Unchanged; continue; }
-                            }
-                        break;
-                        case State.MainHydroTanksNonStockpile:
-                            foreach(var tank in main_tanks) {
-                                if(tank.Stockpile) { yield return ShouldRender.Unchanged; continue; }
-                            }
-                        break; 
-                        case State.HydroThrusterOn:
-                            foreach(var thrust in hydro_thrust) {
-                                if(!thrust.Enabled) { yield return ShouldRender.Unchanged; continue; }
-                            }
-                        break;
-                        case State.OxygenTanksNotSetToStockpile:
-                            foreach(var tank in oxygen_tanks) {
-                                if(tank.Stockpile) { yield return ShouldRender.Unchanged; continue; }
-                            }
-                        break;
-                        case State.Undocked: if(cockpit.HandBrake) { yield return ShouldRender.Unchanged; continue; } break;
+                start: while(state != (State)0x1F) {
+                    if(state != ns) {
+                        state = ns;
+                        yield return ShouldRender.Render;
+                    } else {
+                        yield return ShouldRender.Render;
+                    }
+                    ns = 0;
+
+                    foreach(var tank in reserve_tanks) {
+                        if(tank.FilledRatio < 0.95) { goto start; }
+                    }
+                    ns |= State.EmergencyHydroTanksStockpiled;
+
+                    foreach(var tank in main_tanks) {
+                        if(tank.Stockpile) { goto start; }
+                    }
+                    ns |= State.MainHydroTanksNonStockpile;
+                    
+                    foreach(var thrust in hydro_thrust) {
+                        if(!thrust.Enabled) { goto start; }
+                    }
+                    ns |= State.HydroThrusterOn;
+                    
+                    foreach(var tank in oxygen_tanks) {
+                        if(tank.Stockpile) { goto start; }
+                    }
+                    ns |= State.OxygenTanksNotSetToStockpile;
+                    
+                    bool docked = connector.Status == MyShipConnectorStatus.Connected;
+                    bool landed = false;
+                    
+                    foreach(var gear in gears) {
+                        if(gear.IsLocked) { landed = true; break; }
                     }
 
-                    state += 1;
-                    yield return ShouldRender.Render;
+                    if(docked || landed) { goto start; }
+
+                    ns |= State.Undocked;
                 }
                 
-                state = State.Begin;
+                while(Vector3.IsZero(cockpit.MoveIndicator)) {
+                    yield return ShouldRender.Render;
+                }
+
                 yield break;
             }
 
             private char CheckSymbol(State s) {
-                if(state == s) { return '»'; }
-                if(state < s) { return '°'; }
+                if((state & s) == 0) { return '»'; }
                 else { return 'Ø'; }
             }
 
             public void RenderScreen() {
                 screen.WriteText(RenderText(), false);
             }
-
+            
+            int green_renders = 30;
             private string RenderText() {
                 var sb = new StringBuilder();
+                if(state == (State)0x1F) {
+                    green_renders = green_renders <= 0 ? 30 : green_renders - 1;
+                    for(int i = 0; i < green_renders / 3; ++i) {
+                        sb.Append('\n');
+                    }
+                    sb.Append("GREEN TO LAUNCH");
+                    return sb.ToString();
+                }
+
                  
-                for(State i = State.EmergencyHydroTanksStockpiled; i < State.COUNT; ++i) {
+                for(State i = State.EmergencyHydroTanksStockpiled; i < State.Undocked + 1; i = (State)((int)i << 1)) {
                     sb.Append(CheckSymbol(i));
                     sb.AppendLine(StateDescriptionString(i));
                 }
@@ -225,7 +438,6 @@ namespace IngameScript {
 
             private string StateDescriptionString(State s) {
                 switch(s) {
-                    case State.Begin: return "INVALID STATE";
                     case State.EmergencyHydroTanksStockpiled: return "Reserve Hydro Stockpiled";
                     case State.MainHydroTanksNonStockpile: return "Main Hydro Not Stockpiling";
                     case State.HydroThrusterOn: return "Hydro Thrusters Active";
