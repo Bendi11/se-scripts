@@ -65,7 +65,6 @@ namespace IngameScript {
         }
 
         public Program() {
-            a = 10;
             log = new Logger(Me.GetSurface(0));
             Runtime.UpdateFrequency |= UpdateFrequency.Update100 | UpdateFrequency.Update10;
             cabin_door = nnull(GridTerminalSystem.GetBlockWithName("CABIN DOOR") as IMyDoor);
