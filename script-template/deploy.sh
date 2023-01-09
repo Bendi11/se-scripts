@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT=$(echo 'Flight Computer' | sed 's/\s/_/g')
+SCRIPT=$(echo $(NAME) | sed 's/\s/_/g')
 
 mkdir -p $SPACE_ENGINEERS_SCRIPT_DIR/$SCRIPT
 
