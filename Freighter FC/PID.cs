@@ -20,26 +20,6 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-        class PIDGyro {
-            public IMyGyro gyro { get; private set; }
-            PID y;
-            PID p;
-            PID r;
-
-            public PIDGyro(IMyGyro g, PID y, PID p = null, PID r = null) {
-                gyro = g;
-                this.y = y;
-                this.p = p ?? new PID(y);
-                this.r = r ?? new PID(this.p);
-            }
-            
-            public void Update(Vector3 axis) {
-                gyro.Pitch = p.Run(axis.X);
-                gyro.Yaw = y.Run(axis.Y);
-                gyro.Roll = r.Run(axis.Z);
-            }
-        }
-
         sealed class PID {
             float P { get; set; }
             float I { get; set; }

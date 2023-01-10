@@ -21,17 +21,24 @@ using System.Collections.Immutable;
 namespace IngameScript {
     partial class Program: MyGridProgram {
         IMyShipController cockpit;
+
         OrientationSystem orient;
         StopSystem stop;
-
-        bool align;
-        bool retro;
+        ClosureSystem retro_burn;
 
         public Program() {
             cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
-            orient = new OrientationSystem(GridTerminalSystem);
-            stop = new StopSystem(GridTerminalSystem);
-            Runtime.UpdateFrequency |= UpdateFrequency.Update10;
+            orient = new OrientationSystem(GridTerminalSystem) { parent = this };
+            stop = new StopSystem(GridTerminalSystem) { parent = this };
+            retro_burn = new ClosureSystem(rb);
+            orient.target = -cockpit.GetShipVelocities().LinearVelocity;
+        }
+
+        private IEnumerator<object> rb() {
+            orient.Begin();
+            foreach(var v in orient) { yield return null; }
+            stop.Begin();
+            foreach(var v in stop) { yield return null; }
         }
 
         public void Save() {
@@ -40,14 +47,25 @@ namespace IngameScript {
 
         public void Main(string argument, UpdateType updateSource) {
             if(updateSource.HasFlag(UpdateType.Once)) {
-                
+                bool done = orient.Poll() && stop.Poll() && retro_burn.Poll();
+                if(!done) { Runtime.UpdateFrequency |= UpdateFrequency.Once; }
+                return;
             } else if((updateSource & (UpdateType.Terminal | UpdateType.Script | UpdateType.Trigger | UpdateType.Mod)) != 0) {
-                if(argument == "align" && !retro) {
-                    align = !align;
-                } else if(argument == "retro" && !align) {
-                    retro = !retro;
+                if(argument == "align") {
+                    orient.Begin(); 
+                } else if(argument == "retro") {
+                    orient.target = -cockpit.GetShipVelocities().LinearVelocity;
+                    retro_burn.Begin(); 
                 }
+                Runtime.UpdateFrequency |= UpdateFrequency.Once;
             }
+        }
+
+        class ClosureSystem: IMySystem {
+            Func<IEnumerator<object>> f;
+
+            public ClosureSystem(Func<IEnumerator<object>> func) { f = func; }
+            protected override IEnumerator<object> Run() { return f(); }
         }
     }
 }

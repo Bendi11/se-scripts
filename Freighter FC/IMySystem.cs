@@ -20,24 +20,36 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-        public abstract class IMySystem<T>  {
-            public IEnumerator<T> Progress { get; protected set; }
+        public abstract class IMySystem  {
+            protected IEnumerator<object> _prog;
+            public IEnumerator<object> Progress {
+                get { return _prog; }
+                set {
+                    if(_prog != null) {
+                        _prog.Dispose();
+                    }
+                    _prog = value;
+                }
+            }
             public bool InProgress {
                 get {
                     return Progress != null;
                 }
             }
 
-            public abstract void Begin();
+            public IEnumerator<object> GetEnumerator() { return Progress; }
 
-            public bool Poll(out T val) {
+            public void Begin() { Progress = Run(); }
+
+            protected abstract IEnumerator<object> Run();
+
+            public bool Poll() {
+                if(Progress == null) { return true; }
                 bool more = Progress.MoveNext();
 
                 if(more) {
-                    val = default(T);
                     return false;
                 } else {
-                    val = Progress.Current;
                     Progress.Dispose();
                     Progress = null;
                     return true;

@@ -20,56 +20,65 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-        public class OrientationSystem: IMySystem<float> {
-            List<PIDGyro> gyros = new List<PIDGyro>();
+        public class OrientationSystem: IMySystem {
+            public Program parent { get; set; }
+            List<IMyGyro> gyros = new List<IMyGyro>();
             IMyShipController cockpit;
             public Vector3 target { get; set; }
             private float angle = 0F;
             public bool Oriented {
                 get {
-                    return Math.Abs(angle) < 0.5;
+                    return Math.Abs(angle) < 0.001;
                 }
             }
 
             public OrientationSystem(IMyGridTerminalSystem gridTerminalSystem) {
-                List<IMyGyro> gyro = new List<IMyGyro>();
-                gridTerminalSystem.GetBlocksOfType(gyro);
-                foreach(var g in gyro) {
-                    g.GyroOverride = true;
-                    gyros.Add(new PIDGyro(g, new PID(0F, 0.5F, 0F, 0.5F)));
-                }
-
+                gridTerminalSystem.GetBlocksOfType(gyros);
                 cockpit = gridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
             }
-
-            public override void Begin() { Progress = Run(); }
             
-            private IEnumerator<float> Run() {
+            protected override IEnumerator<object> Run() {
+                try {
                 Matrix gor;
                 cockpit.Orientation.GetMatrix(out gor);
                 var front = gor.Backward;
                 angle = 10F; 
+                foreach(var gyro in gyros) {
+                    gyro.GyroOverride = true;
+                }
                 while(!Oriented) {
                     angle = AngleBetween(cockpit.WorldMatrix.GetOrientation().Forward, target);
+                    parent.Echo("ANGLE: " + angle);
 
-                    foreach(var g_pid in gyros) {
-                        var gyro = g_pid.gyro;
+                    foreach(var gyro in gyros) {
                         gyro.Orientation.GetMatrix(out gor);
                         var localfw = Vector3.TransformNormal(front, Matrix.Transpose(gor));
                         var localmove = Vector3.TransformNormal(target, MatrixD.Transpose(gyro.WorldMatrix));
 
                         var axis = Vector3.Cross(localfw, localmove);
                         axis.Normalize();
-
-                        g_pid.Update(axis);
+                        
+                        gyro.Pitch = axis.X * angle * 0.2F;
+                        gyro.Yaw = axis.Y * angle * 0.2F;
+                        gyro.Roll = axis.Z * angle * 0.2F;
                     }
 
-                    yield return angle;
+                    yield return null;
                 }
+                } finally {
+                    foreach(var gyro in gyros) {
+                        gyro.GyroOverride = false;
+                    }
+                }
+
+                yield return null;
             }
 
             private float AngleBetween(Vector3 a, Vector3 b) {
-                return (float)Math.Acos(a.Dot(b));
+                var angle = (float)Math.Acos(Vector3.Normalize(a).Dot(Vector3.Normalize(b)));
+                if(angle == 0) { return 0.00001F; }
+                if(float.IsNaN(angle)) { return -0.00001F; }
+                else { return angle; }
             }
         }
     }
