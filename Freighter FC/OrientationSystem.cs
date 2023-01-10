@@ -26,9 +26,11 @@ namespace IngameScript {
             IMyShipController cockpit;
             public Vector3 target { get; set; }
             private float angle = 0F;
+            private readonly float RATE = 0.4F;
+            public bool StopOnOriented { get; set; } = true;
             public bool Oriented {
                 get {
-                    return Math.Abs(angle) < 0.001;
+                    return Math.Abs(angle) < 0.005;
                 }
             }
 
@@ -46,9 +48,8 @@ namespace IngameScript {
                 foreach(var gyro in gyros) {
                     gyro.GyroOverride = true;
                 }
-                while(!Oriented) {
+                while((StopOnOriented && !Oriented) ^ !StopOnOriented) {
                     angle = AngleBetween(cockpit.WorldMatrix.GetOrientation().Forward, target);
-                    parent.Echo("ANGLE: " + angle);
 
                     foreach(var gyro in gyros) {
                         gyro.Orientation.GetMatrix(out gor);
@@ -57,10 +58,11 @@ namespace IngameScript {
 
                         var axis = Vector3.Cross(localfw, localmove);
                         axis.Normalize();
+                        axis = axis * angle * RATE;
                         
-                        gyro.Pitch = axis.X * angle * 0.2F;
-                        gyro.Yaw = axis.Y * angle * 0.2F;
-                        gyro.Roll = axis.Z * angle * 0.2F;
+                        gyro.Pitch = axis.X;
+                        gyro.Yaw = axis.Y;
+                        gyro.Roll = axis.Z;
                     }
 
                     yield return null;

@@ -35,10 +35,21 @@ namespace IngameScript {
         }
 
         private IEnumerator<object> rb() {
+            orient.StopOnOriented = true;
             orient.Begin();
             foreach(var v in orient) { yield return null; }
+
+            orient.StopOnOriented = false;
             stop.Begin();
-            foreach(var v in stop) { yield return null; }
+            //orient.Begin();
+            foreach(var v in stop) {
+                //orient.target = -cockpit.GetShipVelocities().LinearVelocity;
+                //orient.Poll();
+                yield return null;
+            }
+
+            orient.Progress = null;
+            orient.StopOnOriented = true;
         }
 
         public void Save() {
@@ -52,6 +63,7 @@ namespace IngameScript {
                 return;
             } else if((updateSource & (UpdateType.Terminal | UpdateType.Script | UpdateType.Trigger | UpdateType.Mod)) != 0) {
                 if(argument == "align") {
+                    orient.target = -cockpit.GetShipVelocities().LinearVelocity;
                     orient.Begin(); 
                 } else if(argument == "retro") {
                     orient.target = -cockpit.GetShipVelocities().LinearVelocity;
