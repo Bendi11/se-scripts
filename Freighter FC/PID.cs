@@ -20,14 +20,34 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
+        class PIDGyro {
+            public IMyGyro gyro { get; private set; }
+            PID y;
+            PID p;
+            PID r;
+
+            public PIDGyro(IMyGyro g, PID y, PID p = null, PID r = null) {
+                gyro = g;
+                this.y = y;
+                this.p = p ?? new PID(y);
+                this.r = r ?? new PID(this.p);
+            }
+            
+            public void Update(Vector3 axis) {
+                gyro.Pitch = p.Run(axis.X);
+                gyro.Yaw = y.Run(axis.Y);
+                gyro.Roll = r.Run(axis.Z);
+            }
+        }
+
         sealed class PID {
             float P { get; set; }
             float I { get; set; }
             float D { get; set; }
 
-            float last_integral = 0;
+            float errsum = 0;
             float ts;
-            float last_err = 0;
+            float last_err = float.NaN;
             float i_decay = 0F;
 
             public PID(float kp, float ki, float kd, float idec = 0F, float time = 0.16F) {
@@ -38,10 +58,27 @@ namespace IngameScript {
                 i_decay = idec;
             }
 
+            public PID(PID other) {
+                P = other.P;
+                I = other.I;
+                D = other.D;
+                errsum = other.errsum;
+                ts = other.ts;
+                last_err = other.last_err;
+                i_decay = other.i_decay;
+            }
+
             public float Run(float error) {
-                float i = last_integral * (1F - i_decay) + error * ts;
-                last_integral = i;
-                float output = (P * error) + (I * i) + (D * ((error / last_err) / ts));
+                errsum += error;
+                errsum *= (1F - i_decay);
+                float i = errsum * (1F - i_decay) * ts;
+                
+                float d = (error - last_err) / ts;
+                if(float.IsNaN(last_err)) {
+                    d = 0;
+                }
+
+                float output = (P * error) + (I * i) + (D * d);
                 last_err = error;
                 return output;
             }

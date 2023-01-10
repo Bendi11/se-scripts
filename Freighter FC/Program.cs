@@ -20,10 +20,17 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
+        IMyShipController cockpit;
         OrientationSystem orient;
+        StopSystem stop;
+
+        bool align;
+        bool retro;
 
         public Program() {
+            cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
             orient = new OrientationSystem(GridTerminalSystem);
+            stop = new StopSystem(GridTerminalSystem);
             Runtime.UpdateFrequency |= UpdateFrequency.Update10;
         }
 
@@ -33,7 +40,21 @@ namespace IngameScript {
 
         public void Main(string argument, UpdateType updateSource) {
             if(updateSource.HasFlag(UpdateType.Update10)) {
-                orient.Run();
+                if(align) {
+                    orient.Run();
+                } else if(retro) {
+                    orient.target = -cockpit.GetShipVelocities().LinearVelocity;
+                    orient.Run();
+                    if(orient.Oriented) {
+                        stop.Run();
+                    }
+                }
+            } else if((updateSource & (UpdateType.Terminal | UpdateType.Script | UpdateType.Trigger | UpdateType.Mod)) != 0) {
+                if(argument == "align" && !retro) {
+                    align = !align;
+                } else if(argument == "retro" && !align) {
+                    retro = !retro;
+                }
             }
         }
     }
