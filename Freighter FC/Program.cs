@@ -39,16 +39,8 @@ namespace IngameScript {
         }
 
         public void Main(string argument, UpdateType updateSource) {
-            if(updateSource.HasFlag(UpdateType.Update10)) {
-                if(align) {
-                    orient.Run();
-                } else if(retro) {
-                    orient.target = -cockpit.GetShipVelocities().LinearVelocity;
-                    orient.Run();
-                    if(orient.Oriented) {
-                        stop.Run();
-                    }
-                }
+            if(updateSource.HasFlag(UpdateType.Once)) {
+                
             } else if((updateSource & (UpdateType.Terminal | UpdateType.Script | UpdateType.Trigger | UpdateType.Mod)) != 0) {
                 if(argument == "align" && !retro) {
                     align = !align;

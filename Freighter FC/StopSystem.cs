@@ -20,7 +20,7 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-        public class StopSystem {
+        public class StopSystem: IMySystem<float> {
             List<IMyThrust> thrusters = new List<IMyThrust>();
             IMyShipController cockpit;
             PID thrust = new PID(1F, 0F, 0F);
@@ -35,12 +35,20 @@ namespace IngameScript {
                 );
             }
 
-            public void Run() {
-                var speed = (float)cockpit.GetShipSpeed();
-                var thrust_applied = thrust.Run(-speed) * mass / thrusters.Count;
+            public override void Begin() {
+                Progress = Run();
+            }
 
-                foreach(var thruster in thrusters) {
-                    thruster.ThrustOverride = thrust_applied;
+            private IEnumerator<float> Run() {
+                var speed = 0.1F;
+                while(speed > 0.1F) {
+                    speed = (float)cockpit.GetShipSpeed();
+                    var thrust_applied = thrust.Run(-speed) * mass / thrusters.Count;
+
+                    foreach(var thruster in thrusters) {
+                        thruster.ThrustOverride = thrust_applied;
+                    }
+                    yield return speed;
                 }
             }
         }
