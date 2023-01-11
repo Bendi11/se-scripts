@@ -24,32 +24,14 @@ namespace IngameScript {
 
         OrientationSystem orient;
         StopSystem stop;
-        ClosureSystem retro_burn;
+        IMySystem retro_burn;
 
         public Program() {
             cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
             orient = new OrientationSystem(GridTerminalSystem) { parent = this };
             stop = new StopSystem(GridTerminalSystem) { parent = this };
-            retro_burn = new ClosureSystem(rb);
+            retro_burn = orient.Then(stop);
             orient.target = -cockpit.GetShipVelocities().LinearVelocity;
-        }
-
-        private IEnumerator<object> rb() {
-            orient.StopOnOriented = true;
-            orient.Begin();
-            foreach(var v in orient) { yield return null; }
-
-            orient.StopOnOriented = false;
-            stop.Begin();
-            //orient.Begin();
-            foreach(var v in stop) {
-                //orient.target = -cockpit.GetShipVelocities().LinearVelocity;
-                //orient.Poll();
-                yield return null;
-            }
-
-            orient.Progress = null;
-            orient.StopOnOriented = true;
         }
 
         public void Save() {
