@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flight Computer", "Flight C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Freighter FC", "Freighter FC\Freighter FC.csproj", "{594BFFCB-671E-4ED2-92A2-F516959BDE45}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sebuild", "sebuild\sebuild.csproj", "{60F67F41-B936-4780-BB23-75A0DFFF799E}"
+EndProject
 Global
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -43,5 +45,17 @@ Global
 		{594BFFCB-671E-4ED2-92A2-F516959BDE45}.Release|x64.Build.0 = Release|Any CPU
 		{594BFFCB-671E-4ED2-92A2-F516959BDE45}.Release|x86.ActiveCfg = Release|Any CPU
 		{594BFFCB-671E-4ED2-92A2-F516959BDE45}.Release|x86.Build.0 = Release|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Debug|x64.Build.0 = Debug|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Debug|x86.Build.0 = Debug|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Release|x64.ActiveCfg = Release|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Release|x64.Build.0 = Release|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Release|x86.ActiveCfg = Release|Any CPU
+		{60F67F41-B936-4780-BB23-75A0DFFF799E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
