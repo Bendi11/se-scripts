@@ -56,5 +56,12 @@ namespace IngameScript {
                 }
             }
         }
+
+        class ClosureSystem: IMySystem {
+            Func<IEnumerator<object>> f;
+
+            public ClosureSystem(Func<IEnumerator<object>> func) { f = func; }
+            protected override IEnumerator<object> Run() { return f(); }
+        }
     }
 }
