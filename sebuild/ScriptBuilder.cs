@@ -115,17 +115,18 @@ public class ScriptWorkspaceContext: IDisposable {
             }
             
             public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
-                Console.WriteLine(node.BaseList.Types.First().Type);
                 if(
-                        node.Identifier.Equals(IdentifierName("Program")) &&
+                        node.Identifier.ValueText.Equals("Program") &&
                         (
                             from ty in node.BaseList?.Types.AsEnumerable()
-                            where ty.IsEquivalentTo(SimpleBaseType(ParseTypeName("MyGridProgram")))
+                            where (ty.Type as IdentifierNameSyntax)?.Identifier.ValueText.Equals("MyGridProgram") ?? false
                             select true
                         ).Count() == 1
                 ) {
                     Console.WriteLine("TEST");
-                    base.Visit(node);
+                    foreach(var member in node.Members) {
+                        member.Accept(this);
+                    }
                 } else {
                     ns.AddMembers(node);
                 }
