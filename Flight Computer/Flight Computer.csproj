@@ -10,10 +10,8 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <ProjectReference Include="../Log/Log.csproj" />
 </ItemGroup>
-  <ImportGroup>
-    <Import Project="../env.csproj" />
-  </ImportGroup>
   <!-- Credit: https://github.com/malware-dev/MDK-SE/tree/master/Source/IngameScriptTemplate-->
   <ItemGroup>
     <Reference Include="System.Collections.Immutable">
