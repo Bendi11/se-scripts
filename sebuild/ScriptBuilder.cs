@@ -1,18 +1,30 @@
 using CSharpMinifier;
-using System.Text;
+using System.Xml;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis;
+using Microsoft.Build.Construction;
 using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.Build.Locator;
 using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace SeBuild;
 
-public class ScriptWorkspaceContext {
-    MSBuildWorkspace workspace;
-    Solution? sln = null;
+using MSBuildProject = Microsoft.Build.Evaluation.Project;
+using MSBuildProjectCollection = Microsoft.Build.Evaluation.ProjectCollection;
+
+public class ScriptWorkspaceContext: IDisposable {
+    readonly MSBuildWorkspace workspace;
+    string scriptDir;
+    public string GameScriptDir {
+        get => scriptDir;
+    }
+
+    Solution sln;
+
+    static ScriptWorkspaceContext() { MSBuildLocator.RegisterDefaults(); }
     
-    /// <summary>Create a new `ScriptWorkspaceContext`</summary>
+    /// <summary>Create a new <c>ScriptWorkspaceContext</c></summary>
     /// <param name="path">
     /// If <c>path</c> is a file, then attempt to open a solution from the given file
     /// Otherwise, search through the directory that <c>path</c> points to to find a .sln file
@@ -23,13 +35,36 @@ public class ScriptWorkspaceContext {
         return me;
     }
 
+    public void Dispose() {
+        workspace.Dispose();
+    }
+    
+    async public Task<NamespaceDeclarationSyntax> BuildProject(string name) {
+        var project = sln.Projects.Single(p => p.Name == name) ?? throw new Exception($"Solution does not contain a project with name ${name}");
+
+        return await BuildProject(project);
+    }
+
+    async public Task<NamespaceDeclarationSyntax> BuildProject(ProjectId id) => await ProjectBuilder.Build(
+            sln,
+            sln.GetProject(id) ?? throw new Exception($"Solution does not contain a project with id ${id}")
+    );
+    async public Task<NamespaceDeclarationSyntax> BuildProject(Project p) { foreach(var diag in workspace.Diagnostics) { Console.WriteLine(diag); } return await ProjectBuilder.Build(sln, p); }
+    
+    #pragma warning disable 8618 
     private ScriptWorkspaceContext() {
         workspace = MSBuildWorkspace.Create();
     }
 
     async private Task Init(string path) {
         string slnPath = path;
-        if(!File.Exists(path)) {
+        bool dir = true;
+        try {
+            var fa = File.GetAttributes(slnPath);
+            dir = fa.HasFlag(FileAttributes.Directory);
+        } catch(FileNotFoundException) {}
+
+        if(dir) {
             foreach(var file in Directory.GetFiles(path)) {
                 if(Path.GetExtension(file).ToUpper().Equals(".SLN")) {
                     slnPath = file;
@@ -38,72 +73,97 @@ public class ScriptWorkspaceContext {
             }
         }
 
+        Console.WriteLine($"Reading solution file {slnPath}");
+        
         sln = await workspace.OpenSolutionAsync(slnPath);
-    }
-    
-    /**
-     * Preprocessor for a single script file that performs minification, header and footer removal, and script whitelisting
-     */
-    public class ScriptPreprocessor: CSharpSyntaxVisitor {
-        public SyntaxTree Tree { get; private set; }
-        
-        /**
-         * Create a new `ScriptPreprocessor` with an empty `Tree` property
-         */
-        public ScriptPreprocessor() {
-            Tree = SyntaxTree(NamespaceDeclaration());
-        }
+        var envProject = sln.Projects.Single(p => p.Name == "env") ?? throw new Exception("No env.csproj defined"); 
 
-        public override void VisitNamespaceDeclaration(NamespaceDeclarationSyntax node) {
-            if(node.Name.ToString().Equals("IngameScript")) {
+        // Now we use the MSBuild apis to load and evaluate our project file
+        using var xmlReader = XmlReader.Create(File.OpenRead(envProject.FilePath ?? throw new Exception("Failed to locate env.csproj file")));
+        ProjectRootElement root = ProjectRootElement.Create(xmlReader, new MSBuildProjectCollection(), preserveFormatting: true);
+        MSBuildProject msbuildProject = new MSBuildProject(root);
+
+        scriptDir = msbuildProject.GetPropertyValue("SpaceEngineersScript");
+        if(scriptDir.Length == 0) { throw new Exception("No SpaceEngineersScript property defined in env.csproj"); }
+    }
+
+    /// <summary>
+    /// Builds a single .csproj project: resolves project references, removes header / footer code, minifies, and returns the
+    /// final script output
+    /// </summary>
+    private class ProjectBuilder {
+        public readonly Project Project;
+        private readonly Solution sln;
+        private HashSet<ProjectId> loaded;
+        readonly NamespaceDeclarationSyntax ns;
+    
+        async public static Task<NamespaceDeclarationSyntax> Build(Solution sol, Project proj) => await new ProjectBuilder(sol, proj).Finish();
+    
+        private ProjectBuilder(Solution sol, Project proj, HashSet<ProjectId>? load = null, NamespaceDeclarationSyntax? name = null) {
+            this.Project = proj;
+            this.sln = sol;
+            loaded = load ?? new HashSet<ProjectId>();
+            loaded.Add(proj.Id);
+            ns = name ?? NamespaceDeclaration(IdentifierName(""));
+        }
+        
+        private class PreprocessWalker: CSharpSyntaxWalker {
+            NamespaceDeclarationSyntax ns;
+    
+            public PreprocessWalker(NamespaceDeclarationSyntax name) : base(SyntaxWalkerDepth.Trivia) {
+                ns = name;
+            }
             
-            } else {
-                throw new Exception("Namespace declared with name != IngameScript");
+            public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
+                Console.WriteLine(node.BaseList.Types.First().Type);
+                if(
+                        node.Identifier.Equals(IdentifierName("Program")) &&
+                        (
+                            from ty in node.BaseList?.Types.AsEnumerable()
+                            where ty.IsEquivalentTo(SimpleBaseType(ParseTypeName("MyGridProgram")))
+                            select true
+                        ).Count() == 1
+                ) {
+                    Console.WriteLine("TEST");
+                    base.Visit(node);
+                } else {
+                    ns.AddMembers(node);
+                }
             }
+            public override void VisitGlobalStatement(GlobalStatementSyntax node) => ns.AddMembers(node);
+            public override void VisitEnumDeclaration(EnumDeclarationSyntax node) => ns.AddMembers(node);
+            public override void VisitStructDeclaration(StructDeclarationSyntax node) => ns.AddMembers(node);
+            public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax node) => ns.AddMembers(node);
         }
-
-        public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
-            if(node.Identifier.ToString().Equals("Program") && node.Parent is NamespaceDeclarationSyntax) {
-
-            }
-        }
-    }
-}
-
-/// <summary>
-/// Builds a single .csproj project: resolves project references, removes header / footer code, minifies, and writes the
-/// final script output to a file
-/// </summary>
-public class ProjectBuilder {
-    public readonly Project Project;
-    private HashSet<Project> loaded;
-    NamespaceDeclarationSyntax ns;
-
-    public ProjectBuilder(Project proj, NamespaceDeclarationSyntax? name = null) {
-        this.Project = proj;
-        loaded = new HashSet<Project>();
-        ns = name ?? NamespaceDeclaration(IdentifierName(""));
-    }
-    
-    private class DocumentWalker: CSharpSyntaxWalker {
-        NamespaceDeclarationSyntax ns;
-
-        public DocumentWalker(NamespaceDeclarationSyntax name) {
-            ns = name;
-        }
-
-        public override void VisitClassDeclaration(ClassDeclarationSyntax node) => ns.AddMembers(node);
-        public override void VisitGlobalStatement(GlobalStatementSyntax node) => ns.AddMembers(node);
-        public override void VisitEnumDeclaration(EnumDeclarationSyntax node) => ns.AddMembers(node);
-        public override void VisitStructDeclaration(StructDeclarationSyntax node) => ns.AddMembers(node);
-        public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax node) => ns.AddMembers(node);
-    }
-
-    async private Task Digest(Document doc) {
-        var syntax = await doc.GetSyntaxTreeAsync();
-        if(syntax is not CSharpSyntaxTree) { throw new Exception("Cannot compile non-C# files"); }
-        var csSyntax = (CSharpSyntaxTree)syntax;
         
-        csSyntax.GetRoot().Accept(new DocumentWalker(ns));
+        /// <summary>
+        /// Resolve all inter-project references by emitting their code to this <c>ProjectBuilder</c>'s <c>ns</c>
+        /// </summary>
+        async private Task ResolveRefs() {
+            foreach(var reference in Project.ProjectReferences) {
+                if(loaded.Contains(reference.ProjectId)) { continue; }
+                var project = sln.GetProject(reference.ProjectId) ?? throw new Exception($"Cannot locate referenced project {reference.ProjectId}");
+                await new ProjectBuilder(sln, project, loaded, ns).Finish();
+            }
+        }
+    
+        async public Task<NamespaceDeclarationSyntax> Finish() {
+            await ResolveRefs();
+            foreach(var doc in from doc in Project.Documents where doc.Folders.Count == 0 || doc.Folders.First() != "obj" select doc) {
+                Console.WriteLine($"Processing {doc.Name}");
+                await Digest(doc);
+            }
+
+            foreach(var member in this.ns.Members) { Console.WriteLine($"MEMBER: {member}"); }
+    
+            return this.ns;
+        }
+    
+        async private Task Digest(Document doc) {
+            var syntax = await doc.GetSyntaxTreeAsync() as CSharpSyntaxTree ?? throw new Exception("Cannot compile non-C# files");
+            syntax
+                .GetRoot()
+                .Accept(new PreprocessWalker(ns));
+        }
     }
 }

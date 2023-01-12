@@ -10,6 +10,7 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <ProjectReference Include = "../Flight Computer" />
   </ItemGroup>
   <ImportGroup>
     <Import Project="../env.csproj" />
