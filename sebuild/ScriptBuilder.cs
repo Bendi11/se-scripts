@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Build.Construction;
+using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
 
 namespace SeBuild;
@@ -16,6 +17,8 @@ public class ScriptWorkspaceContext: IDisposable {
     public string GameScriptDir {
         get => scriptDir;
     }
+
+    static ScriptWorkspaceContext() { MSBuildLocator.RegisterDefaults(); }
 
     Solution sln;
     
@@ -45,7 +48,12 @@ public class ScriptWorkspaceContext: IDisposable {
     );
     
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
-    async public Task<List<CSharpSyntaxNode>> BuildProject(Project p) => await Preprocessor.Build(sln, p);
+    async public Task<List<CSharpSyntaxNode>> BuildProject(Project p) {
+        foreach(var diag in workspace.Diagnostics) {
+            Console.WriteLine(diag);
+        }
+        return await Preprocessor.Build(sln, p);
+    }
     
     #pragma warning disable 8618 
     private ScriptWorkspaceContext() {
@@ -142,7 +150,8 @@ public class ScriptWorkspaceContext: IDisposable {
     
         async private Task<List<CSharpSyntaxNode>> Finish() {
             await ResolveRefs();
-            foreach(var doc in from doc in Project.Documents where doc.Folders.Count == 0 || doc.Folders.First() != "obj" select doc) {
+            Console.WriteLine($"{Project.Name}");
+            foreach(var doc in from doc in Project.Documents where doc.Folders.FirstOrDefault() != "obj" select doc) {
                 Console.WriteLine($"Processing {doc.FilePath}");
                 await Digest(doc);
             }

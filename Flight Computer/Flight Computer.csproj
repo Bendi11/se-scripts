@@ -4,13 +4,13 @@
     <LangVersion>6</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../Log/Log.csproj">
-        <Targets>Build</Targets>
+    <ProjectReference Include="../lib/Log/Log.csproj">
+      <Targets>Build</Targets>
     </ProjectReference>
-</ItemGroup>
-<ImportGroup>
+  </ItemGroup>
+  <ImportGroup>
     <Import Project="../env.csproj" />
-</ImportGroup>
+  </ImportGroup>
   <!-- Credit: https://github.com/malware-dev/MDK-SE/tree/master/Source/IngameScriptTemplate-->
   <ItemGroup>
     <Reference Include="System.Collections.Immutable">
