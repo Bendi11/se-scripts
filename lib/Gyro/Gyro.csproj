@@ -1,21 +1,10 @@
 <Project ToolsVersion="15.0" Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net7.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <LangVersion>6</LangVersion>
   </PropertyGroup>
-  <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
-    <ProjectReference Include="../lib/Gyro/Gyro.csproj">
-      <Targets>Build</Targets>
-    </ProjectReference>
-  </ItemGroup>
   <ImportGroup>
-    <Import Project="../env.csproj" />
+      <Import Project="../../env.csproj" />
   </ImportGroup>
   <!-- Credit: https://github.com/malware-dev/MDK-SE/tree/master/Source/IngameScriptTemplate-->
   <ItemGroup>

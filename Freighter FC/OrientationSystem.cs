@@ -4,54 +4,24 @@ using VRageMath;
 namespace IngameScript {
     partial class Program: MyGridProgram {
         public class OrientationSystem: IMySystem {
-            public Program parent { get; set; }
-            List<IMyGyro> gyros = new List<IMyGyro>();
-            IMyShipController cockpit;
-            public Vector3 target { get; set; }
-            private float angle = 0F;
-            private readonly float RATE = 0.4F;
+            public readonly GyroController gyro;
             public bool StopOnOriented { get; set; } = true;
-            public bool Oriented {
-                get {
-                    return Math.Abs(angle) < 0.005;
-                }
-            }
 
             public OrientationSystem(IMyGridTerminalSystem gridTerminalSystem) {
+                List<IMyGyro> gyros = new List<IMyGyro>();
                 gridTerminalSystem.GetBlocksOfType(gyros);
-                cockpit = gridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
+                var cockpit = gridTerminalSystem.GetBlockWithName("COCKPIT");
+                gyro = new GyroController(gyros, cockpit);
             }
             
             protected override IEnumerator<object> Run() {
                 try {
-                    Matrix gor;
-                    cockpit.Orientation.GetMatrix(out gor);
-                    var front = gor.Backward;
-                    angle = 10F; 
-                    foreach(var gyro in gyros) {
-                        gyro.GyroOverride = true;
-                    }
-                    while((StopOnOriented && !Oriented) ^ !StopOnOriented) {
-                        angle = AngleBetween(cockpit.WorldMatrix.GetOrientation().Forward, target);
-
-                        foreach(var gyro in gyros) {
-                            gyro.Orientation.GetMatrix(out gor);
-                            var localfw = Vector3.TransformNormal(front, Matrix.Transpose(gor));
-                            var localmove = Vector3.TransformNormal(target, MatrixD.Transpose(gyro.WorldMatrix));
-
-                            var axis = Vector3.Cross(localfw, localmove);
-                            axis.Normalize();
-                            axis = axis * angle * RATE;
-                            
-                            gyro.Pitch = axis.X;
-                            gyro.Yaw = axis.Y;
-                            gyro.Roll = axis.Z;
-                        }
-
+                    while((StopOnOriented && !gyro.IsOriented) ^ !StopOnOriented) {
+                        gyro.Step();
                         yield return null;
                     }
                 } finally {
-                    foreach(var gyro in gyros) {
+                    foreach(var gyro in gyro.Gyros) {
                         gyro.GyroOverride = false;
                     }
                 }
