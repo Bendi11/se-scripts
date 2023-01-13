@@ -4,7 +4,7 @@
     <LangVersion>6</LangVersion>
   </PropertyGroup>
   <ImportGroup>
-    <Import Project="../env.csproj" />
+    <Import Project="../..//env.csproj" />
   </ImportGroup>
   <!-- Credit: https://github.com/malware-dev/MDK-SE/tree/master/Source/IngameScriptTemplate-->
   <ItemGroup>

@@ -43,7 +43,8 @@ public class ScriptWorkspaceContext: IDisposable {
             sln,
             sln.GetProject(id) ?? throw new Exception($"Solution does not contain a project with id ${id}")
     );
-
+    
+    /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
     async public Task<List<CSharpSyntaxNode>> BuildProject(Project p) => await Preprocessor.Build(sln, p);
     
     #pragma warning disable 8618 

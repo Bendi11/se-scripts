@@ -260,7 +260,6 @@ namespace IngameScript {
             return;
         }
         
-        
         class PreFlightChecklist {
             IMyTextSurface screen;
             List<IMyThrust> hydro_thrust = new List<IMyThrust>();
