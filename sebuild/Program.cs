@@ -42,12 +42,11 @@ internal class Program {
                     foreach(var decl in syntax) { sb.Append(decl.ToFullString()); }
                     
                     string output = sb.ToString();
-                    using var file = new StreamWriter(File.OpenWrite(path));
-
+                    using var file = new StreamWriter(File.Create(path));
+                    
+                    Console.WriteLine($"Writing output {path}");
                     if(build.Minify) {
-                        foreach(var tok in Minifier.Minify(output)) {
-                            file.Write(tok);
-                        }
+                        foreach(var tok in Minifier.Minify(output)) { file.Write(tok); }
                     } else {
                         file.Write(output);
                     }

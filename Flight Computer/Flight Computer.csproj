@@ -4,11 +4,9 @@
     <LangVersion>6</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
-    <ProjectReference Include="../Log/Log.csproj" />
+    <ProjectReference Include="../Log/Log.csproj">
+        <Targets>Build</Targets>
+    </ProjectReference>
 </ItemGroup>
 <ImportGroup>
     <Import Project="../env.csproj" />

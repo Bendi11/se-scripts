@@ -1,15 +1,10 @@
 using System.Xml;
-using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Options;
-using Microsoft.CodeAnalysis.Formatting;
-using Microsoft.CodeAnalysis.Rename;
 using Microsoft.Build.Construction;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Build.Locator;
-using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace SeBuild;
 
