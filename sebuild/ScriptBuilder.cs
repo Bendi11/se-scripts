@@ -1,9 +1,11 @@
 using System.Xml;
+using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.Rename;
 using Microsoft.Build.Construction;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Build.Locator;
@@ -40,18 +42,17 @@ public class ScriptWorkspaceContext: IDisposable {
         workspace.Dispose();
     }
     
-    async public Task<NamespaceDeclarationSyntax> BuildProject(string name) {
-        var project = sln.Projects.Single(p => p.Name == name) ?? throw new Exception($"Solution does not contain a project with name ${name}");
+    async public Task<List<CSharpSyntaxNode>> BuildProject(string name) {
+        var project = sln.Projects.SingleOrDefault(p => p.Name == name) ?? throw new Exception($"Solution does not contain a project with name ${name}");
         return await BuildProject(project);
     }
 
-    async public Task<NamespaceDeclarationSyntax> BuildProject(ProjectId id) => await ProjectBuilder.Build(
+    async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId id) => await Preprocessor.Build(
             sln,
             sln.GetProject(id) ?? throw new Exception($"Solution does not contain a project with id ${id}")
     );
-    async public Task<NamespaceDeclarationSyntax> BuildProject(Project p) {
-        return await ProjectBuilder.Build(sln, p);
-    }
+
+    async public Task<List<CSharpSyntaxNode>> BuildProject(Project p) => await Preprocessor.Build(sln, p);
     
     #pragma warning disable 8618 
     private ScriptWorkspaceContext() {
@@ -78,7 +79,7 @@ public class ScriptWorkspaceContext: IDisposable {
         Console.WriteLine($"Reading solution file {slnPath}");
         
         sln = await workspace.OpenSolutionAsync(slnPath);
-        var envProject = sln.Projects.SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj defined"); 
+        var envProject = sln.Projects.SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file"); 
 
         // Now we use the MSBuild apis to load and evaluate our project file
         using var xmlReader = XmlReader.Create(File.OpenRead(envProject.FilePath ?? throw new Exception("Failed to locate env.csproj file")));
@@ -90,38 +91,32 @@ public class ScriptWorkspaceContext: IDisposable {
     }
 
     /// <summary>
-    /// Builds a single .csproj project: resolves project references, removes header / footer code, minifies, and returns the
-    /// final script output
+    /// Builds a single .csproj project: resolves project references, removes header / footer code, and returns the
+    /// final declarations list
     /// </summary>
-    private class ProjectBuilder {
-        private class NamespaceContainer {
-            public NamespaceDeclarationSyntax ns;
-            public NamespaceContainer(NamespaceDeclarationSyntax name) { ns = name; }
-        }
+    private class Preprocessor {
         public readonly Project Project;
         private readonly Solution sln;
         private HashSet<ProjectId> loaded;
-        NamespaceContainer ns;
+        List<CSharpSyntaxNode> decls;
     
-        async public static Task<NamespaceDeclarationSyntax> Build(Solution sol, Project proj) => await new ProjectBuilder(sol, proj).Finish();
+        async public static Task<List<CSharpSyntaxNode>> Build(Solution sol, Project proj) => await new Preprocessor(sol, proj).Finish();
     
-        private ProjectBuilder(Solution sol, Project proj, HashSet<ProjectId>? load = null, NamespaceContainer? name = null) {
+        private Preprocessor(Solution sol, Project proj, HashSet<ProjectId>? load = null, List<CSharpSyntaxNode>? dec = null) {
             this.Project = proj;
             this.sln = sol;
             loaded = load ?? new HashSet<ProjectId>();
             loaded.Add(proj.Id);
-            ns = name ?? new NamespaceContainer(NamespaceDeclaration(IdentifierName("")));
+            decls = dec ?? new List<CSharpSyntaxNode>();
         }
         
         private class PreprocessWalker: CSharpSyntaxWalker {
-            NamespaceContainer ns;
-    
-            public PreprocessWalker(NamespaceContainer name) : base(SyntaxWalkerDepth.Trivia) {
-                ns = name;
+            List<CSharpSyntaxNode> decls;
+            public PreprocessWalker(List<CSharpSyntaxNode> dec) : base(SyntaxWalkerDepth.Trivia) {
+                decls = dec;
             }
             
             public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
-                Console.WriteLine(node.GetText());
                 if(
                         node.Identifier.ValueText.Equals("Program") &&
                         (
@@ -133,9 +128,9 @@ public class ScriptWorkspaceContext: IDisposable {
                             ?? false
                         )
                 ) {
-                    ns.ns = ns.ns.AddMembers(node.Members.ToArray());
+                    decls.AddRange(node.Members);
                 } else {
-                    ns.ns = ns.ns.AddMembers(node);
+                    decls.Add(node);
                 }
             }
         }
@@ -148,28 +143,28 @@ public class ScriptWorkspaceContext: IDisposable {
                 if(loaded.Contains(reference.ProjectId)) { continue; }
                 var project = sln.GetProject(reference.ProjectId) ?? throw new Exception($"Cannot locate referenced project {reference.ProjectId}");
                 Console.WriteLine($"Resolving project reference {project.Name}");
-                await new ProjectBuilder(sln, project, loaded, ns).Finish();
+                await new Preprocessor(sln, project, loaded, decls).Finish();
             }
         }
     
-        async public Task<NamespaceDeclarationSyntax> Finish() {
+        async private Task<List<CSharpSyntaxNode>> Finish() {
             await ResolveRefs();
             foreach(var doc in from doc in Project.Documents where doc.Folders.Count == 0 || doc.Folders.First() != "obj" select doc) {
-                Console.WriteLine($"Processing {doc.Name}");
+                Console.WriteLine($"Processing {doc.FilePath}");
                 await Digest(doc);
             }
             
-            return this.ns.ns;
+            return this.decls;
         }
     
         async private Task Digest(Document doc) {
-            var dOpts = await doc.GetOptionsAsync();
-            var opts = FormatterOpts.Apply(dOpts);
-            var newdoc = await Formatter.FormatAsync(doc, opts);
-            var syntax = await newdoc.GetSyntaxTreeAsync() as CSharpSyntaxTree ?? throw new Exception("Cannot compile non-C# files");
+            //var dOpts = await doc.GetOptionsAsync();
+            //var opts = FormatterOpts.Apply(dOpts);
+            //var newdoc = await Formatter.FormatAsync(doc, opts);
+            var syntax = await doc.GetSyntaxTreeAsync() as CSharpSyntaxTree ?? throw new Exception("Cannot compile non-C# files");
             syntax
                 .GetRoot()
-                .Accept(new PreprocessWalker(this.ns));
+                .Accept(new PreprocessWalker(decls));
         }
     }
 }

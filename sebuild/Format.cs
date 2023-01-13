@@ -10,10 +10,10 @@ namespace SeBuild;
 public static class FormatterOpts {
     public static OptionSet Apply(DocumentOptionSet o) {
         return o
-            .WithChangedOption(NewLine, "\n")
-            .WithChangedOption(TabSize, 20)
-            .WithChangedOption(SmartIndent, IndentStyle.None)
-            .WithChangedOption(UseTabs, false)
+            .WithChangedOption(NewLine, value: "")
+            .WithChangedOption(TabSize, value: 20)
+            .WithChangedOption(SmartIndent, value: IndentStyle.None)
+            .WithChangedOption(UseTabs, value: false)
             .WithChangedOption(IndentSwitchSection, false)
             .WithChangedOption(NewLinesForBracesInMethods, false)
             .WithChangedOption(NewLinesForBracesInTypes, false)

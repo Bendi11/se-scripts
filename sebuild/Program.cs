@@ -1,4 +1,6 @@
 ﻿using CommandLine;
+using CSharpMinifier;
+using System.Text;
 namespace SeBuild;
 
 internal class Program {
@@ -12,6 +14,9 @@ internal class Program {
 
         [Option('o', "output", Required=false, HelpText="Path to write a compressed output file")]
         public string? Output { get; set; }
+
+        [Option('m', "minify", Required=false, HelpText = "Minify the produced output")]
+        public bool Minify { get; set; }
     }
 
     static async Task Main(string[] args) {
@@ -33,8 +38,19 @@ internal class Program {
                         path = build.Output;
                     }
                     
+                    StringBuilder sb = new StringBuilder();
+                    foreach(var decl in syntax) { sb.Append(decl.ToFullString()); }
+                    
+                    string output = sb.ToString();
                     using var file = new StreamWriter(File.OpenWrite(path));
-                    syntax.WriteTo(file);
+
+                    if(build.Minify) {
+                        foreach(var tok in Minifier.Minify(output)) {
+                            file.Write(tok);
+                        }
+                    } else {
+                        file.Write(output);
+                    }
                 },
                 async (errs) => await Task.Run(() => {
                     foreach(var err in errs) {

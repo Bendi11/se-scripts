@@ -1,8 +1,6 @@
 <Project ToolsVersion="15.0" Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net7.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <LangVersion>6</LangVersion>
   </PropertyGroup>
   <ItemGroup>
@@ -12,6 +10,9 @@
     <Reference Include="System.Xml" />
     <ProjectReference Include="../Log/Log.csproj" />
 </ItemGroup>
+<ImportGroup>
+    <Import Project="../env.csproj" />
+</ImportGroup>
   <!-- Credit: https://github.com/malware-dev/MDK-SE/tree/master/Source/IngameScriptTemplate-->
   <ItemGroup>
     <Reference Include="System.Collections.Immutable">
