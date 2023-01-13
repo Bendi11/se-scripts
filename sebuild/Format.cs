@@ -8,8 +8,16 @@ using static Microsoft.CodeAnalysis.Formatting.FormattingOptions;
 namespace SeBuild;
 
 public static class FormatterOpts {
-    public static OptionSet Apply(OptionSet o) {
+    public static OptionSet Apply(DocumentOptionSet o) {
         return o
+            .WithChangedOption(NewLine, "\n")
+            .WithChangedOption(TabSize, 20)
+            .WithChangedOption(SmartIndent, IndentStyle.None)
+            .WithChangedOption(UseTabs, false)
+            .WithChangedOption(IndentSwitchSection, false)
+            .WithChangedOption(NewLinesForBracesInMethods, false)
+            .WithChangedOption(NewLinesForBracesInTypes, false)
+            .WithChangedOption(NewLinesForBracesInControlBlocks, false)
             .WithChangedOption(IndentBlock, false)
             .WithChangedOption(IndentBraces, false)
             .WithChangedOption(IndentSwitchSection, false)
@@ -18,8 +26,7 @@ public static class FormatterOpts {
             .WithChangedOption(LabelPositioning, LabelPositionOptions.NoIndent)
             .WithChangedOption(NewLineForCatch, false)
             .WithChangedOption(NewLineForClausesInQuery, false)
-            .WithChangedOption(NewLineForElse, false)
-            .WithChangedOption(NewLine, LanguageNames.CSharp, "")
-            .WithChangedOption(TabSize, LanguageNames.CSharp, 0);
+            .WithChangedOption(NewLineForElse, false);
+
     }
 }

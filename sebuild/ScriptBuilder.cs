@@ -163,8 +163,8 @@ public class ScriptWorkspaceContext: IDisposable {
         }
     
         async private Task Digest(Document doc) {
-            OptionSet opts = await doc.GetOptionsAsync();
-            opts = FormatterOpts.Apply(opts);
+            var dOpts = await doc.GetOptionsAsync();
+            var opts = FormatterOpts.Apply(dOpts);
             var newdoc = await Formatter.FormatAsync(doc, opts);
             var syntax = await newdoc.GetSyntaxTreeAsync() as CSharpSyntaxTree ?? throw new Exception("Cannot compile non-C# files");
             syntax
