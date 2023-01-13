@@ -41,32 +41,32 @@ namespace IngameScript {
             
             protected override IEnumerator<object> Run() {
                 try {
-                Matrix gor;
-                cockpit.Orientation.GetMatrix(out gor);
-                var front = gor.Backward;
-                angle = 10F; 
-                foreach(var gyro in gyros) {
-                    gyro.GyroOverride = true;
-                }
-                while((StopOnOriented && !Oriented) ^ !StopOnOriented) {
-                    angle = AngleBetween(cockpit.WorldMatrix.GetOrientation().Forward, target);
-
+                    Matrix gor;
+                    cockpit.Orientation.GetMatrix(out gor);
+                    var front = gor.Backward;
+                    angle = 10F; 
                     foreach(var gyro in gyros) {
-                        gyro.Orientation.GetMatrix(out gor);
-                        var localfw = Vector3.TransformNormal(front, Matrix.Transpose(gor));
-                        var localmove = Vector3.TransformNormal(target, MatrixD.Transpose(gyro.WorldMatrix));
-
-                        var axis = Vector3.Cross(localfw, localmove);
-                        axis.Normalize();
-                        axis = axis * angle * RATE;
-                        
-                        gyro.Pitch = axis.X;
-                        gyro.Yaw = axis.Y;
-                        gyro.Roll = axis.Z;
+                        gyro.GyroOverride = true;
                     }
+                    while((StopOnOriented && !Oriented) ^ !StopOnOriented) {
+                        angle = AngleBetween(cockpit.WorldMatrix.GetOrientation().Forward, target);
 
-                    yield return null;
-                }
+                        foreach(var gyro in gyros) {
+                            gyro.Orientation.GetMatrix(out gor);
+                            var localfw = Vector3.TransformNormal(front, Matrix.Transpose(gor));
+                            var localmove = Vector3.TransformNormal(target, MatrixD.Transpose(gyro.WorldMatrix));
+
+                            var axis = Vector3.Cross(localfw, localmove);
+                            axis.Normalize();
+                            axis = axis * angle * RATE;
+                            
+                            gyro.Pitch = axis.X;
+                            gyro.Yaw = axis.Y;
+                            gyro.Roll = axis.Z;
+                        }
+
+                        yield return null;
+                    }
                 } finally {
                     foreach(var gyro in gyros) {
                         gyro.GyroOverride = false;

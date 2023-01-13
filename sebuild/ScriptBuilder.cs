@@ -4,7 +4,6 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Build.Construction;
 using Microsoft.CodeAnalysis.MSBuild;
-using Microsoft.Build.Locator;
 
 namespace SeBuild;
 
@@ -19,8 +18,6 @@ public class ScriptWorkspaceContext: IDisposable {
     }
 
     Solution sln;
-
-    static ScriptWorkspaceContext() { MSBuildLocator.RegisterDefaults(); }
     
     /// <summary>Create a new <c>ScriptWorkspaceContext</c></summary>
     /// <param name="path">
