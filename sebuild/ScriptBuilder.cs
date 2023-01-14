@@ -23,6 +23,7 @@ public class ScriptWorkspaceContext: IDisposable {
     static ScriptWorkspaceContext() { MSBuildLocator.RegisterDefaults(); }
 
     Solution sln;
+    private HashSet<ProjectId> minified = new HashSet<ProjectId>();
     
     /// <summary>Create a new <c>ScriptWorkspaceContext</c></summary>
     /// <param name="path">
@@ -39,25 +40,45 @@ public class ScriptWorkspaceContext: IDisposable {
         workspace.Dispose();
     }
     
-    async public Task<List<CSharpSyntaxNode>> BuildProject(string name) {
+    async public Task<List<CSharpSyntaxNode>> BuildProject(string name, bool rename = false) {
         var project = sln.Projects.SingleOrDefault(p => p.Name == name) ?? throw new Exception($"Solution does not contain a project with name ${name}");
-        return await BuildProject(project);
+        return await BuildProject(project.Id, rename);
     }
 
-    async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId id) => await Preprocessor.Build(
-            sln,
-            sln.GetProject(id) ?? throw new Exception($"Solution does not contain a project with id ${id}")
-    );
     
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
-    async public Task<List<CSharpSyntaxNode>> BuildProject(Project p) {
-        var mini = await PreMinifier.Create(sln, p);
-        var newsln = await mini.Run();
-        workspace.TryApplyChanges(newsln);
+    async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false) {
+        Solution newsln;
+        Project proj;
+        if(rename) {
+            (newsln, proj) = await MinifyProject(sln, p);
+        } else {
+            newsln = sln;
+            proj = sln.GetProject(p) ?? throw new Exception($"Failed to find project in solution {sln.FilePath} with ID {p}");
+        }
         foreach(var diag in workspace.Diagnostics) {
             Console.WriteLine(diag);
         }
-        return await Preprocessor.Build(newsln, p);
+
+        return await Preprocessor.Build(newsln, proj);
+    }
+    
+    /// <summary>
+    /// Minify a project and all dependencies of the project
+    /// </summary>
+    async private Task<(Solution, Project)> MinifyProject(Solution sol, ProjectId p, PreMinifier? other = null) {
+        if(minified.Contains(p)) { return (sln, sln.GetProject(p) ?? throw new Exception($"Solution has no project with ID {p}")); } 
+        var mini = other is null ? new PreMinifier(workspace, sol, p) : new PreMinifier(workspace, sol, p, other);
+        sol = await mini.Run();
+        minified.Add(p);
+        var proj = sol.GetProject(p) ?? throw new Exception($"Failed to locate project with ID {p} after minification");
+        
+        foreach(var reference in proj.ProjectReferences) {
+            var (newsol, _) = await MinifyProject(sol, reference.ProjectId, mini);
+            sol = newsol;
+        }
+
+        return (sol, proj);
     }
     
     #pragma warning disable 8618 
@@ -98,10 +119,11 @@ public class ScriptWorkspaceContext: IDisposable {
 
     private class PreMinifier {
         readonly Solution _sln;
-        readonly Project _project;
+        ProjectId _project;
         Compilation _comp;
         readonly NameGenerator _gen = new NameGenerator();
         Solution _final;
+        public HashSet<string> Renamed = new HashSet<string>();
         static readonly SymbolRenameOptions _opts = new SymbolRenameOptions() {
             RenameOverloads = true,
             RenameFile = false,
@@ -130,7 +152,7 @@ public class ScriptWorkspaceContext: IDisposable {
             }
 
             public string Next() {
-                StringBuilder sb = new StringBuilder('_');
+                StringBuilder sb = new StringBuilder();
                 
                 IncrementSlot(0);
                 foreach(var slot in _gen) {
@@ -190,41 +212,135 @@ public class ScriptWorkspaceContext: IDisposable {
             }
         }
 
-        static async public Task<PreMinifier> Create(Solution sln, Project project) {
-            var me = new PreMinifier(sln, project);
-            await me.Init();
-            
-            return me;
+        public PreMinifier(Workspace ws, Solution sln, ProjectId project, PreMinifier other) : this(ws, sln, project) {
+            Renamed = other.Renamed;
+            _gen = other._gen;
         }
 
-        async private Task Init() {
-            _comp = await _project.GetCompilationAsync() ?? throw new Exception($"Failed to get compilation for project {_project.Name}");
-        }
-
-        private PreMinifier(Solution sln, Project project) {
+        public PreMinifier(Workspace ws, Solution sln, ProjectId project) {
             _sln = sln;
+            _final = _sln;
             _project = project;
         }
 
-        private IEnumerable<INamedTypeSymbol> GetLocalTypes(INamespaceSymbol ns) => ns.GetTypeMembers().Where(ty => ty.Locations.Any(loc => loc.IsInSource));
-
         async public Task<Solution> Run() {
-            foreach(var ns in _comp.GlobalNamespace.GetNamespaceMembers()) {
-                await RenameGroup(GetLocalTypes(ns));
+            for(;;) {
+                var project = _final.GetProject(_project) ?? throw new Exception($"Failed to locate project with ID {_project}");
+                _comp = await project.GetCompilationAsync() ?? throw new Exception($"Failed to get compilation for {project.Name}");
+                bool renamedInDoc = false;
+                foreach(var doc in project.Documents) {
+                    var tree = await doc.GetSyntaxTreeAsync() ?? throw new Exception($"Failed to get syntax tree for document {doc.FilePath}");
+                    var sema = _comp.GetSemanticModel(tree) ?? throw new Exception($"Failed to get semantic model for document {doc.FilePath}");
+                    var walker = new RenamerWalker(Renamed, sema);
+                    walker.Visit(await tree.GetRootAsync());
+                    if(walker.ToRename is not null) {
+                        await RandomName(sema, walker.ToRename);
+                        renamedInDoc = true;
+                        break;
+                    }
+                }
+
+                if(!renamedInDoc) { break; }
             }
 
             return _final;
         }
 
-        async public Task RenameGroup(IEnumerable<ISymbol> types) {
-            foreach(var dec in types) {
-                string name = _gen.Next();
-                Console.WriteLine($"Renaming {dec.Name} to {name}");
-                _final = await Renamer.RenameSymbolAsync(_sln, dec, _opts, name);
-                if(dec is INamedTypeSymbol ty) {
-                    await RenameGroup(ty.GetMembers().Where(member => member is IFieldSymbol));
+        private class RenamerWalker: CSharpSyntaxWalker {
+            private HashSet<string> _renamed;
+            private SemanticModel _sema;
+            public ISymbol? ToRename { get; private set; } = null;
+
+            public RenamerWalker(HashSet<string> renamed, SemanticModel sema) {
+                _renamed = renamed;
+                _sema = sema;
+            }
+
+            public override void Visit(SyntaxNode? node) {
+                if(ToRename is null) { base.Visit(node); }
+            }
+
+            public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
+                AttemptRename(node);
+                base.VisitClassDeclaration(node);
+            }
+
+            public override void VisitEnumDeclaration(EnumDeclarationSyntax node) {
+                AttemptRename(node);
+                base.VisitEnumDeclaration(node);
+            }
+
+            public override void VisitEnumMemberDeclaration(EnumMemberDeclarationSyntax node) {
+                AttemptRename(node);
+                base.VisitEnumMemberDeclaration(node);
+            }
+
+            public override void VisitMethodDeclaration(MethodDeclarationSyntax node) {
+                AttemptRename(node);
+                base.VisitMethodDeclaration(node);
+            }
+
+            public override void VisitParameter(ParameterSyntax param) {
+                AttemptRename(param);
+                base.VisitParameter(param);
+            }
+
+            public override void VisitTypeParameter(TypeParameterSyntax tparam) {
+                AttemptRename(tparam);
+                base.VisitTypeParameter(tparam);
+            }
+
+            public override void VisitVariableDeclaration(VariableDeclarationSyntax vbl) {
+                if(ToRename is not null) { return; }
+                foreach(var name in vbl.Variables) {
+                    AttemptRename(name); 
                 }
             }
+
+            public override void VisitForEachStatement(ForEachStatementSyntax frch) {
+                AttemptRename(frch);
+                base.VisitForEachStatement(frch);
+            }
+
+            private void AttemptRename(SyntaxNode node) {
+                if(ToRename is not null) { return; }
+                var symbol = _sema.GetDeclaredSymbol(node) ?? throw new Exception($"Failed to get symbol for syntax {node.GetText()}");
+                if(
+                        (symbol is INamedTypeSymbol && (symbol.Name.Equals("Program"))) ||
+                        (symbol is IMethodSymbol) && (symbol.Name.Equals("Save") || symbol.Name.Equals("Main"))
+                ) {
+                    return;
+                }
+
+                if(!_renamed.Contains(symbol.Name)) {
+                    ToRename = symbol;
+                    return;
+                }
+            }
+        }
+
+        async private Task RandomName(SemanticModel sema, ISymbol symbol) {
+            string name = _gen.Next();
+            bool conflicts = true;
+            while(conflicts) {
+                conflicts = false;
+                foreach(var loc in symbol.Locations) {
+                    if(sema.LookupSymbols(loc.SourceSpan.Start).Any(collider => collider.Name.Equals(name))) {
+                        conflicts = true;
+                        break;
+                    }
+                }
+
+                conflicts = conflicts || Renamed.Contains(name);
+
+                if(conflicts) {
+                    Console.WriteLine($"Generated symbol {name} (replaces {symbol.Name}) collides, regenerating...");
+                    name = _gen.Next();
+                }
+            }
+            Console.WriteLine($"Renaming {symbol.Name} to {name}");
+            _final = await Renamer.RenameSymbolAsync(_final, symbol, _opts, name);
+            Renamed.Add(name);
         }
     }
 
@@ -237,9 +353,9 @@ public class ScriptWorkspaceContext: IDisposable {
         private readonly Solution sln;
         private HashSet<ProjectId> loaded;
         List<CSharpSyntaxNode> decls;
-    
-        async public static Task<List<CSharpSyntaxNode>> Build(Solution sol, Project proj) => await new Preprocessor(sol, proj).Finish();
-    
+
+        async public static Task<List<CSharpSyntaxNode>> Build(Solution sol, Project proj) => await new Preprocessor(sol, proj).Finish(); 
+
         private Preprocessor(Solution sol, Project proj, HashSet<ProjectId>? load = null, List<CSharpSyntaxNode>? dec = null) {
             this.Project = proj;
             this.sln = sol;

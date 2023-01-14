@@ -20,6 +20,7 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
+        class A {}
         IMyDoor cabin_door;
         IMySensorBlock cabin_sensor;
         List<IMyAirVent> vents = new List<IMyAirVent>();

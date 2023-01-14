@@ -26,7 +26,7 @@ internal class Program {
                     string projectName = build.Project ?? throw new ArgumentNullException();
                     var ctx = await ScriptWorkspaceContext.Create(build.SolutionPath ?? throw new ArgumentNullException());
 
-                    var syntax = await ctx.BuildProject(projectName);
+                    var syntax = await ctx.BuildProject(projectName, build.Minify);
                     
                     string path;
                     
