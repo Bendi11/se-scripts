@@ -4,7 +4,7 @@ namespace IngameScript {
     partial class Program: MyGridProgram {
         public class OrientationSystem: IMySystem {
             public readonly GyroController gyro;
-            public bool StopOnOriented { get; set; } = true;
+            public bool StopOnOriented = true;
 
             public OrientationSystem(IMyGridTerminalSystem gridTerminalSystem) {
                 List<IMyGyro> gyros = new List<IMyGyro>();

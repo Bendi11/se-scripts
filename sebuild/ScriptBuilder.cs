@@ -1,5 +1,7 @@
 using System.Xml;
+using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Build.Construction;
@@ -49,10 +51,12 @@ public class ScriptWorkspaceContext: IDisposable {
     
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
     async public Task<List<CSharpSyntaxNode>> BuildProject(Project p) {
+        var mini = await PreMinifier.Create(sln, p);
+        var newsln = await mini.Run();
         foreach(var diag in workspace.Diagnostics) {
             Console.WriteLine(diag);
         }
-        return await Preprocessor.Build(sln, p);
+        return await Preprocessor.Build(newsln, p);
     }
     
     #pragma warning disable 8618 
@@ -89,6 +93,88 @@ public class ScriptWorkspaceContext: IDisposable {
 
         scriptDir = msbuildProject.GetPropertyValue("SpaceEngineersScript");
         if(scriptDir.Length == 0) { throw new Exception("No SpaceEngineersScript property defined in env.csproj"); }
+    }
+
+    private class PreMinifier {
+        readonly Solution _sln;
+        readonly Project _project;
+        Compilation _comp;
+        readonly NameGenerator _gen = new NameGenerator();
+        Solution _final;
+        static readonly SymbolRenameOptions _opts = new SymbolRenameOptions() {
+            RenameOverloads = true,
+            RenameFile = false,
+            RenameInComments = false,
+            RenameInStrings = false,
+        };
+        
+        private class NameGenerator {
+            int _nChars = 1;
+            List<IEnumerator<char>> _gen = new List<IEnumerator<char>>();
+
+            public NameGenerator() {
+                _gen.Add(UnicodeEnumerator());
+            }
+
+            private void IncrementSlot(int slot) {
+                if(slot >= _gen.Count) {
+                    _gen.Append(UnicodeEnumerator());
+                    return;
+                }
+
+                if(!_gen[slot].MoveNext()) {
+                    _gen[slot] = UnicodeEnumerator();
+                    IncrementSlot(slot + 1);
+                }
+            }
+
+            public string Next() {
+                StringBuilder sb = new StringBuilder('_');
+                
+                IncrementSlot(0);
+                foreach(var slot in _gen) {
+                    sb.Append(slot.Current);
+                }
+                
+                Console.WriteLine(sb.ToString());
+                return sb.ToString();
+            }
+
+            IEnumerator<char> UnicodeEnumerator() {
+                foreach(int i in Enumerable.Range(0, 0x1CCF)) {
+                    yield return (char)i;
+                }
+            }
+        }
+
+        static async public Task<PreMinifier> Create(Solution sln, Project project) {
+            var me = new PreMinifier(sln, project);
+            await me.Init();
+            return me;
+        }
+
+        async private Task Init() {
+            _comp = await _project.GetCompilationAsync() ?? throw new Exception($"Failed to get compilation for project {_project.Name}");
+        }
+
+        private PreMinifier(Solution sln, Project project) {
+            _sln = sln;
+            _project = project;
+        }
+
+        async public Task<Solution> Run() {
+            foreach(var ns in _comp.GlobalNamespace.GetNamespaceMembers()) {
+                await RenameNamespace(ns);
+            }
+            return _final;
+        }
+
+        async public Task RenameNamespace(INamespaceSymbol ns) {
+            foreach(var dec in ns.GetTypeMembers().Select(ty => ty.)) {
+                Console.WriteLine($"Renaming {dec.Name} (is {dec.GetType().Name})");
+                _final = await Renamer.RenameSymbolAsync(_sln, dec, _opts, _gen.Next()); 
+            }
+        }
     }
 
     /// <summary>
