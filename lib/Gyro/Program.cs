@@ -47,7 +47,7 @@ namespace IngameScript {
 
                 var axis = Vector3.Cross(localfw, localmove);
                 axis.Normalize();
-                axis = axis * _ang * Rate;
+                axis = -axis * Math.Abs(_ang) * Rate;
                 
                 gyro.Pitch = axis.X;
                 gyro.Yaw = axis.Y;

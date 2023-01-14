@@ -1,1 +1,430 @@
-public class Ë{public List<IMyGyro>Ì;public Vector3 Í=Vector3.UnitX;public Vector3 OrientLocal{get{return Vector3.TransformNormal(Í,Matrix.Transpose(Î.WorldMatrix));}set{Í=Vector3.TransformNormal(value,Î.WorldMatrix);}}IMyTerminalBlock Î;Vector3 Ï;float Ð=0F;public float Ñ=0.2F;public bool IsOriented{get{return Math.Abs(Ð)<0.0001;}}public Ë(List<IMyGyro>Ò,IMyTerminalBlock Ó){Ì=Ò;Î=Ó;Matrix Ô;Î.Orientation.GetMatrix(out Ô);Ï=Ô.Forward;}public float Õ(){Matrix Ö;Ü();foreach(var Ø in Ì){Ø.Orientation.GetMatrix(out Ö);var Ù=Vector3.TransformNormal(Ï,Matrix.Transpose(Ö));var Ú=Vector3.TransformNormal(Í,MatrixD.Transpose(Ø.WorldMatrix));var Û=Vector3.Cross(Ù,Ú);Û.Normalize();Û=Û*Ð*Ñ;Ø.Pitch=Û.X;Ø.Yaw=Û.Y;Ø.Roll=Û.Z;}return Ð;}private void Ü()=>Ð=Ý(Î.WorldMatrix.GetOrientation().Forward,Í);private float Ý(Vector3 a,Vector3 b){a.Normalize();b.Normalize();var Þ=(float)Math.Acos(a.Dot(b));if(Þ==0){return 0.00001F;}if(float.IsNaN(Þ)){return-0.00001F;}else{return Þ;}}}public abstract class A{protected IEnumerator<object>B;public IEnumerator<object>Progress{get{return B;}set{if(B!=null){B.Dispose();}B=value;}}public bool InProgress{get{return Progress!=null;}}private class C:A{public A D,E;protected override IEnumerator<object>F(){D.Q();foreach(var G in D){yield return null;}E.Q();foreach(var H in E){yield return null;}}}private class I:A{public A J,K;protected override IEnumerator<object>F(){J.Q();K.Q();while(J.InProgress){J.R();K.R();yield return null;}}}public A L(A M)=>new C(){D=this,E=M};public A N(A O)=>new I(){J=this,K=O};public IEnumerator<object>P(){return Progress;}public void Q(){Progress=F();}protected abstract IEnumerator<object>F();public virtual bool R(){if(Progress==null){return true;}bool S=Progress.MoveNext();if(S){return false;}else{Progress.Dispose();Progress=null;return true;}}}class T:A{Func<IEnumerator<object>>U;public T(Func<IEnumerator<object>>V){U=V;}protected override IEnumerator<object>F(){return U();}}public class W:A{public readonly GyroController X;public bool Y=true;public W(IMyGridTerminalSystem Z){List<IMyGyro>a=new List<IMyGyro>();Z.GetBlocksOfType(a);var b=Z.GetBlockWithName("COCKPIT");X=new GyroController(a,b);}protected override IEnumerator<object>F(){try{while((Y&&!X.IsOriented)^!Y){X.Step();yield return null;}}finally{foreach(var c in X.Gyros){c.GyroOverride=false;}}}}sealed class d{float P{get;set;}float I{get;set;}float D{get;set;}float e=0;float f;float g=float.NaN;float h=0F;public d(float i,float j,float k,float l=0F,float m=0.16F){P=i;I=j;D=k;f=m;h=l;}public d(d n){P=n.P;I=n.I;D=n.D;e=n.e;f=n.f;g=n.g;h=n.h;}public float o(float p){e+=p;e*=(1F-h);float i=e*(1F-h)*f;float d=(p-g)/f;if(float.IsNaN(g)){d=0;}float q=(P*p)+(I*i)+(D*d);g=p;return q;}}IMyShipController r;W s;y t;A u;public Program(){r=GridTerminalSystem.GetBlockWithName("COCKPIT")as IMyShipController;s=new W(GridTerminalSystem);t=new y(GridTerminalSystem){parent=this};u=s.L(t);s.X.OrientWorld=-r.GetShipVelocities().LinearVelocity;}public void Save(){}public void Main(string v,UpdateType w){if(w.HasFlag(UpdateType.Once)){bool x=s.R()&&t.R()&&u.R();if(!x){Runtime.UpdateFrequency|=UpdateFrequency.Once;}return;}else if((w&(UpdateType.Terminal|UpdateType.Script|UpdateType.Trigger|UpdateType.Mod))!=0){if(v=="align"){s.X.OrientWorld=-r.GetShipVelocities().LinearVelocity;s.Q();}else if(v=="retro"){s.X.OrientWorld=-r.GetShipVelocities().LinearVelocity;u.Q();}Runtime.UpdateFrequency|=UpdateFrequency.Once;}}public class y:A{public Program parent{get;set;}List<IMyThrust>z=new List<IMyThrust>();IMyShipController À;d Á=new d(0.07F,0F,0F);float Â;public y(IMyGridTerminalSystem Ã){À=Ã.GetBlockWithName("COCKPIT")as IMyShipController;Â=À.CalculateShipMass().TotalMass;Ã.GetBlocksOfType(z,(Ä)=>Ä.WorldMatrix.GetOrientation().Forward==À.WorldMatrix.GetOrientation().Backward);}protected override IEnumerator<object>F(){try{var Å=0.2F;Matrix Æ;À.Orientation.GetMatrix(out Æ);while(Å>0.02F){var Ç=Vector3D.TransformNormal(À.GetShipVelocities().LinearVelocity,MatrixD.Transpose(À.WorldMatrix));Å=(float)Ç.Z;var È=-Á.o(-Å);foreach(var É in z){É.ThrustOverridePercentage=È;}yield return null;}}finally{foreach(var Ê in z){Ê.ThrustOverride=0F;}}yield return null;}}
+    public class Logger {
+        IMyTextSurface terminal;
+        int msg_count = 0;
+        Vector2 BOUNDS;
+
+        public Logger(IMyTextSurface terminal) {
+            terminal.WriteText("", false);
+            this.terminal = terminal;
+            terminal.BackgroundColor = Color.Black;
+            terminal.ContentType = ContentType.TEXT_AND_IMAGE;
+            terminal.Font = "Monospace";
+            terminal.FontColor = Color.Lime;
+            terminal.FontSize = 1.3F;
+            var sz = terminal.MeasureStringInPixels(new StringBuilder('A'), "Monospace", 1.3F);
+            BOUNDS = terminal.SurfaceSize / sz;
+        }
+
+        public void Error(string msg) { Log("[ERR]" + msg); }
+        public void Warn(string msg) { Log("[WRN]" + msg); }
+
+        public void Log(string msg) {
+            if(msg_count >= BOUNDS.Y) {
+                terminal.WriteText("", false);
+                msg_count = 0;
+            }
+            
+            while(msg.Length > 0) {
+                int len = Math.Min((int)BOUNDS.X, msg.Length);
+                terminal.WriteText(msg.Substring(0, len), true);
+                msg = msg.Substring(len);
+                terminal.WriteText("\n", true);
+            }
+
+            msg_count += 1; 
+        }
+    }
+        class A {}
+        IMyDoor cabin_door;
+        IMySensorBlock cabin_sensor;
+        List<IMyAirVent> vents = new List<IMyAirVent>();
+        IMyCockpit cockpit;
+        MyTuple<IMyCockpit, IMyCockpit> benches;
+        List<IMyGasTank> oxygen_tanks = new List<IMyGasTank>();
+        IMyReflectorLight decom_light;
+
+        List<IMySoundBlock> sound_blocks = new List<IMySoundBlock>();
+        string sound_b4_alarm = null;
+        bool playing_b4_alarm = false;
+
+        List<MyDetectedEntityInfo> detected = new List<MyDetectedEntityInfo>();
+        
+        PreFlightChecklist checklist;
+        IEnumerator<PreFlightChecklist.ShouldRender> checklist_sm = null;
+
+        static Logger log;
+
+        Dictionary<string, Action> commands = new Dictionary<string, Action>(StringComparer.OrdinalIgnoreCase);
+        MyCommandLine cmdline = new MyCommandLine();
+
+        Action onDoorStateChange = null;
+        Action onVentDepressurize = null;
+
+        int decom_countdown = -1;
+
+        public static T nnull<T>(T me, string msg = null) {
+            msg = msg ?? typeof(T).ToString() + " is null";
+            if(me == null) {
+                log.Error(msg);
+                throw new Exception(msg);
+            } 
+            return me;
+        }
+        public static List<T> nnull<T>(List<T> list, string msg = null) {
+            msg = msg ?? typeof(List<T>).ToString() + " is empty";
+            if(list.Count == 0) {
+                log.Error(msg);
+                throw new Exception(msg);
+            }
+            return list;
+        }
+
+        public Program() {
+            log = new Logger(Me.GetSurface(0));
+            Runtime.UpdateFrequency |= UpdateFrequency.Update100 | UpdateFrequency.Update10;
+            cabin_door = nnull(GridTerminalSystem.GetBlockWithName("CABIN DOOR") as IMyDoor);
+            cabin_sensor = nnull(GridTerminalSystem.GetBlockWithName("CABIN SENSOR") as IMySensorBlock);
+            cockpit = nnull(GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyCockpit);
+            benches.Item1 = nnull(GridTerminalSystem.GetBlockWithName("Bench 1") as IMyCockpit);
+            benches.Item2 = nnull(GridTerminalSystem.GetBlockWithName("Bench 2") as IMyCockpit);
+            decom_light = nnull(GridTerminalSystem.GetBlockWithName("CABIN DECOM LIGHT") as IMyReflectorLight);
+            GridTerminalSystem.GetBlockGroupWithName("O2 VENTS").GetBlocksOfType(vents);
+            GridTerminalSystem.GetBlockGroupWithName("OXYGEN TANKS").GetBlocksOfType(oxygen_tanks);
+            GridTerminalSystem.GetBlocksOfType(sound_blocks);
+            nnull(vents);
+
+            decom_light.Radius = 13.3F;
+            decom_light.Intensity = 10F;
+            decom_light.Color = Color.Red;
+            decom_light.BlinkLength = 50F;
+            decom_light.Enabled = false;
+            
+            checklist = new PreFlightChecklist(log, cockpit, GridTerminalSystem, nnull(cockpit.GetSurface(0)));
+
+            commands.Add("cabindoor", CabinDoorToggle);
+            commands.Add("preflight", Preflight);
+            CabinDoorClose();
+        }
+
+        public void Save() {
+            
+        }
+
+        public void Main(string argument, UpdateType updateSource) {
+            if(updateSource.HasFlag(UpdateType.Update10)) {
+                if(checklist_sm != null) {
+                    if(checklist_sm.MoveNext()) {
+                        if(checklist_sm.Current != PreFlightChecklist.ShouldRender.Unchanged) { checklist.RenderScreen(); }
+                    } else {
+                        checklist_sm.Dispose();
+                        checklist_sm = null;
+                        checklist.Reset();
+                    }
+                }
+
+                if(onDoorStateChange != null && cabin_door.Status != DoorStatus.Closing && cabin_door.Status != DoorStatus.Opening) {
+                    onDoorStateChange();
+                    onDoorStateChange = null;
+                }
+
+                if(onVentDepressurize != null) {
+                    bool o2_full = true;
+                    foreach(var tank in oxygen_tanks) { if(tank.FilledRatio < 0.999) { o2_full = false; break; } }
+                    bool depres = true;
+                    foreach(var vent in vents) { if(vent.GetOxygenLevel() > 0.001) { depres = false; break; }}
+
+                    if(o2_full || depres) {
+                        if(o2_full) {
+                            log.Log("O2 tank max: venting air");
+                        }
+                        onVentDepressurize();
+                        onVentDepressurize = null;
+                    }
+                }
+
+                return;
+            }
+
+            if(updateSource.HasFlag(UpdateType.Script) || updateSource.HasFlag(UpdateType.Trigger) || updateSource.HasFlag(UpdateType.Terminal)) {
+                if(cmdline.TryParse(argument)) {
+                    Dispatch();
+                } else {
+                    log.Error("Failed to parse command " + argument);
+                }
+            }
+             
+
+            if((updateSource & UpdateType.Update100) == UpdateType.Update100) {
+                if(decom_countdown != -1) {
+                    decom_light.BlinkIntervalSeconds = decom_countdown > 1 ? 0.5F : 0.3F;
+                    decom_countdown -= 1;
+                    if(decom_countdown == -1) {
+                        foreach(var sound in sound_blocks) {
+                            sound.SelectedSound = sound_b4_alarm;
+                            if(playing_b4_alarm) {
+                                sound.Play();
+                            } else {
+                                sound.Stop();
+                            }
+                        }
+                        FinishDecomCountdown();
+                    }
+                }
+            }
+        }
+
+        public void Dispatch() {
+            string command = cmdline.Argument(0);
+            if(command == null) {
+                log.Error("no command");
+                return;
+            }
+            
+            Action action;
+            if(!commands.TryGetValue(command, out action) ) {
+                log.Error("undefined command " + command);
+                return;
+            }
+
+            action();
+        }
+
+        private void Preflight() {
+            if(checklist_sm == null) {
+                checklist_sm = checklist.Run();
+                Runtime.UpdateFrequency |= UpdateFrequency.Update10;
+            } else {
+                checklist_sm.Dispose();
+                checklist_sm = null;
+                checklist.Reset();
+            }
+        }
+
+        private void CabinDoorToggle() {
+            if(decom_countdown != -1) { return; }
+            if(cabin_door.Status != DoorStatus.Closed) {
+                log.Log("cabin door seal");
+                CabinDoorClose();
+                return;
+            }
+
+            detected.Clear();
+            int num_crew_in_cabin = 0;
+            bool enemy = false;
+            cabin_sensor.DetectedEntities(detected);
+            foreach(var entity in detected) {
+                if(entity.Relationship != MyRelationsBetweenPlayerAndBlock.Enemies) {
+                    num_crew_in_cabin += 1;
+                } else {
+                    enemy = true;
+                }
+            }
+
+            bool pressurized = false;
+            foreach(var vent in vents) {
+                if(vent.GetOxygenLevel() > 0.001F) { pressurized = true; break; }
+            }
+            
+            if(pressurized && num_crew_in_cabin > 1) {
+                if(!enemy) {
+                    log.Log(">1 crew in cabin - await decom. sequence");
+                    decom_light.Enabled = true;
+                    decom_light.BlinkIntervalSeconds = 0.5F;
+                    decom_countdown = 3;
+                    foreach(var sound in sound_blocks) {
+                        sound_b4_alarm = sound.SelectedSound;
+                        playing_b4_alarm = sound.IsSoundSelected;
+                        sound.SelectedSound = "Alert 2";
+                        sound.Enabled = true;
+                        sound.Play();
+                    }
+                    return;
+                } else {
+                    log.Warn("hostiles present in cabin - skip decom. sequence");
+                }
+            }
+            
+            FinishDecomCountdown();
+        }
+
+        private void FinishDecomCountdown() {
+            decom_light.Enabled = false;
+            foreach(var vent in vents) {
+                vent.Depressurize = true;
+            }
+
+            onVentDepressurize = () => {
+                log.Log("green for cabin door egress");
+                cabin_door.Enabled = true;
+                cabin_door.OpenDoor();
+                foreach(var vent in vents) { vent.Depressurize = false; }
+                onDoorStateChange = () => {
+                    cabin_door.Enabled = false;
+                };
+            };
+
+        }
+
+        private void CabinDoorClose() {
+            cabin_door.Enabled = true;
+            cabin_door.CloseDoor();
+            onDoorStateChange = () => {
+                cabin_door.Enabled = false;
+                foreach(var vent in vents) { if(vent.CanPressurize) { vent.Depressurize = false; } }
+            };
+            return;
+        }
+        
+        class PreFlightChecklist {
+            IMyTextSurface screen;
+            List<IMyThrust> hydro_thrust = new List<IMyThrust>();
+            List<IMyGasTank> reserve_tanks = new List<IMyGasTank>();
+            List<IMyGasTank> main_tanks = new List<IMyGasTank>();
+            List<IMyGasTank> oxygen_tanks = new List<IMyGasTank>();
+            List<IMyLandingGear> gears = new List<IMyLandingGear>();
+            IMyShipConnector connector;
+            IMyShipController cockpit;
+            Logger log;
+            
+            [Flags]
+            enum State {
+                EmergencyHydroTanksStockpiled = 1,
+                MainHydroTanksNonStockpile = 2,
+                HydroThrusterOn = 4,
+                OxygenTanksNotSetToStockpile = 8,
+                Undocked = 16,
+            }
+
+            public enum ShouldRender {
+                Render,
+                Unchanged,
+            }
+
+            State state = 0;
+
+            public PreFlightChecklist(Logger log, IMyShipController cockpit, IMyGridTerminalSystem gridTerminalSystem, IMyTextSurface _screen) {
+                this.log = log;
+                screen = _screen;                
+                screen.Font = "Monospace";
+                screen.FontSize = 0.9F;
+                screen.ClearImagesFromSelection();
+                screen.Alignment = TextAlignment.CENTER;
+                screen.FontColor = Color.Lime;
+                screen.BackgroundColor = Color.Black;
+
+                gridTerminalSystem.GetBlockGroupWithName("HYDRO THRUST").GetBlocksOfType(hydro_thrust);
+                gridTerminalSystem.GetBlockGroupWithName("RESERVE HYDROGEN").GetBlocksOfType(reserve_tanks);
+                gridTerminalSystem.GetBlockGroupWithName("MAIN HYDROGEN").GetBlocksOfType(main_tanks);
+                gridTerminalSystem.GetBlockGroupWithName("OXYGEN TANKS").GetBlocksOfType(oxygen_tanks);
+                gridTerminalSystem.GetBlockGroupWithName("LANDING GEAR").GetBlocksOfType(gears);
+
+                nnull(hydro_thrust);
+                nnull(reserve_tanks);
+                nnull(main_tanks);
+                nnull(oxygen_tanks);
+                nnull(gears);
+                connector = nnull(gridTerminalSystem.GetBlockWithName("CONNECTOR") as IMyShipConnector);
+                this.cockpit = cockpit;
+            }
+            
+            public void Reset() {
+                state = 0;
+                green_renders = 0;
+                screen.ContentType = ContentType.SCRIPT;
+                screen.WriteText("");
+            }
+
+            public IEnumerator<ShouldRender> Run() {
+                state = 0;
+                State ns = 0;
+                screen.ContentType = ContentType.TEXT_AND_IMAGE;
+                
+                start: while(state != (State)0x1F) {
+                    if(state != ns) {
+                        state = ns;
+                        yield return ShouldRender.Render;
+                    } else {
+                        yield return ShouldRender.Render;
+                    }
+                    ns = 0;
+
+                    foreach(var tank in reserve_tanks) {
+                        if(tank.FilledRatio < 0.95) { goto start; }
+                    }
+                    ns |= State.EmergencyHydroTanksStockpiled;
+
+                    foreach(var tank in main_tanks) {
+                        if(tank.Stockpile) { goto start; }
+                    }
+                    ns |= State.MainHydroTanksNonStockpile;
+                    
+                    foreach(var thrust in hydro_thrust) {
+                        if(!thrust.Enabled) { goto start; }
+                    }
+                    ns |= State.HydroThrusterOn;
+                    
+                    foreach(var tank in oxygen_tanks) {
+                        if(tank.Stockpile) { goto start; }
+                    }
+                    ns |= State.OxygenTanksNotSetToStockpile;
+                    
+                    bool docked = connector.Status == MyShipConnectorStatus.Connected;
+                    bool landed = false;
+                    
+                    foreach(var gear in gears) {
+                        if(gear.IsLocked) { landed = true; break; }
+                    }
+
+                    if(docked || landed) { goto start; }
+
+                    ns |= State.Undocked;
+                }
+                
+                while(Vector3.IsZero(cockpit.MoveIndicator)) {
+                    yield return ShouldRender.Render;
+                }
+
+                yield break;
+            }
+
+            private char CheckSymbol(State s) {
+                if((state & s) == 0) { return '»'; }
+                else { return 'Ø'; }
+            }
+
+            public void RenderScreen() {
+                screen.WriteText(RenderText(), false);
+            }
+            
+            int green_renders = 30;
+            private string RenderText() {
+                var sb = new StringBuilder();
+                if(state == (State)0x1F) {
+                    green_renders = green_renders <= 0 ? 30 : green_renders - 1;
+                    for(int i = 0; i < green_renders / 3; ++i) {
+                        sb.Append('\n');
+                    }
+                    sb.Append("GREEN TO LAUNCH");
+                    return sb.ToString();
+                }
+
+                 
+                for(State i = State.EmergencyHydroTanksStockpiled; i < State.Undocked + 1; i = (State)((int)i << 1)) {
+                    sb.Append(CheckSymbol(i));
+                    sb.AppendLine(StateDescriptionString(i));
+                }
+
+                return sb.ToString();
+            }
+
+            private string StateDescriptionString(State s) {
+                switch(s) {
+                    case State.EmergencyHydroTanksStockpiled: return "Reserve Hydro Stockpiled";
+                    case State.MainHydroTanksNonStockpile: return "Main Hydro Not Stockpiling";
+                    case State.HydroThrusterOn: return "Hydro Thrusters Active";
+                    case State.OxygenTanksNotSetToStockpile: return "O2 Tanks Not Stockpiling";
+                    case State.Undocked: return "Undocked";
+                    default: return "INVALID STATE OUT OF RANGE";
+                }
+            }
+        }

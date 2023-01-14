@@ -71,14 +71,16 @@ public class ScriptWorkspaceContext: IDisposable {
         var mini = other is null ? new PreMinifier(workspace, sol, p) : new PreMinifier(workspace, sol, p, other);
         sol = await mini.Run();
         minified.Add(p);
-        var proj = sol.GetProject(p) ?? throw new Exception($"Failed to locate project with ID {p} after minification");
-        
-        foreach(var reference in proj.ProjectReferences) {
+        var fetchProject = () => sol.GetProject(p) ?? throw new Exception($"Failed to locate project with ID {p} after minification");
+
+        foreach(var reference in fetchProject().ProjectReferences) {
             var (newsol, _) = await MinifyProject(sol, reference.ProjectId, mini);
             sol = newsol;
         }
 
-        return (sol, proj);
+
+
+        return (sol, fetchProject());
     }
     
     #pragma warning disable 8618 
