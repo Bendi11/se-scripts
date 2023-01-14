@@ -53,6 +53,7 @@ public class ScriptWorkspaceContext: IDisposable {
     async public Task<List<CSharpSyntaxNode>> BuildProject(Project p) {
         var mini = await PreMinifier.Create(sln, p);
         var newsln = await mini.Run();
+        workspace.TryApplyChanges(newsln);
         foreach(var diag in workspace.Diagnostics) {
             Console.WriteLine(diag);
         }
@@ -136,20 +137,63 @@ public class ScriptWorkspaceContext: IDisposable {
                     sb.Append(slot.Current);
                 }
                 
-                Console.WriteLine(sb.ToString());
                 return sb.ToString();
             }
 
             IEnumerator<char> UnicodeEnumerator() {
-                foreach(int i in Enumerable.Range(0, 0x1CCF)) {
-                    yield return (char)i;
+                IEnumerable<char> Range(int from, int to) {
+                    for(int i = from; i <= to; ++i) { yield return (char)i; }
                 }
+                
+                var letters = Range(0x41, 0x5A)
+                    .Concat(Range(0x61, 0x7A))
+                    .Concat(Range(0xC0, 0xFF))
+                    .Concat(Range(0x100, 0x17F))
+                    .Concat(Range(0x180, 0x1BF))
+                    .Concat(Range(0x1C4, 0x1CC))
+                    .Concat(Range(0x1CD, 0x1DC))
+                    .Concat(Range(0x1DD, 0x1FF))
+                    .Concat(Range(0x200, 0x217))
+                    .Concat(Range(0x218, 0x21B))
+                    .Concat(Range(0x21C, 0x24F))
+                    .Concat(Range(0x22A, 0x233))
+                    .Concat(Range(0x234, 0x236))
+                    .Concat(Range(0x238, 0x240))
+                    .Concat(Range(0x23A, 0x23E))
+                    .Concat(Range(0x250, 0x2A8))
+                    .Concat(Range(0x2A9, 0x2AD))
+                    .Concat(Range(0x2AE, 0x2AF))
+                    .Concat(Range(0x370, 0x3FB))
+                    .Concat(Range(0x37B, 0x37D))
+                    .Concat(Range(0x37F, 0x3F3))
+                    .Concat(Range(0x3CF, 0x3F9))
+                    .Concat(Range(0x3E2, 0x3EF))
+                    .Concat(Range(0x400, 0x45F))
+                    .Concat(Range(0x410, 0x44F))
+                    .Concat(Range(0x460, 0x481))
+                    .Concat(Range(0x48A, 0x4F9))
+                    .Concat(Range(0x4FA, 0x4FF))
+                    .Concat(Range(0x500, 0x52D))
+                    .Concat(Range(0x531, 0x556))
+                    .Concat(Range(0x560, 0x588))
+                    .Concat(Range(0x10A0, 0x10C5))
+                    .Concat(Range(0x10D0, 0x10F0))
+                    .Concat(Range(0x13A0, 0x13F4))
+                    .Concat(Range(0x1C90, 0x1CB0))
+                    .Concat(Range(0x1E00, 0x1EF9))
+                    .Concat(Range(0x1EA0, 0x1EF1))
+                    .Concat(Range(0x1F00, 0x1FFC))
+                    .Concat(Range(0x2C00, 0x2C2E))
+                    .Concat(Range(0x2C30, 0x2C5E));
+
+                foreach(var letter in letters) { yield return letter; }
             }
         }
 
         static async public Task<PreMinifier> Create(Solution sln, Project project) {
             var me = new PreMinifier(sln, project);
             await me.Init();
+            
             return me;
         }
 
@@ -162,17 +206,24 @@ public class ScriptWorkspaceContext: IDisposable {
             _project = project;
         }
 
+        private IEnumerable<INamedTypeSymbol> GetLocalTypes(INamespaceSymbol ns) => ns.GetTypeMembers().Where(ty => ty.Locations.Any(loc => loc.IsInSource));
+
         async public Task<Solution> Run() {
             foreach(var ns in _comp.GlobalNamespace.GetNamespaceMembers()) {
-                await RenameNamespace(ns);
+                await RenameGroup(GetLocalTypes(ns));
             }
+
             return _final;
         }
 
-        async public Task RenameNamespace(INamespaceSymbol ns) {
-            foreach(var dec in ns.GetTypeMembers().Select(ty => ty.)) {
-                Console.WriteLine($"Renaming {dec.Name} (is {dec.GetType().Name})");
-                _final = await Renamer.RenameSymbolAsync(_sln, dec, _opts, _gen.Next()); 
+        async public Task RenameGroup(IEnumerable<ISymbol> types) {
+            foreach(var dec in types) {
+                string name = _gen.Next();
+                Console.WriteLine($"Renaming {dec.Name} to {name}");
+                _final = await Renamer.RenameSymbolAsync(_sln, dec, _opts, name);
+                if(dec is INamedTypeSymbol ty) {
+                    await RenameGroup(ty.GetMembers().Where(member => member is IFieldSymbol));
+                }
             }
         }
     }

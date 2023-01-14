@@ -28,10 +28,10 @@ namespace IngameScript {
 
         public Program() {
             cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
-            orient = new OrientationSystem(GridTerminalSystem) { parent = this };
+            orient = new OrientationSystem(GridTerminalSystem);
             stop = new StopSystem(GridTerminalSystem) { parent = this };
             retro_burn = orient.Then(stop);
-            orient.target = -cockpit.GetShipVelocities().LinearVelocity;
+            orient.gyro.OrientWorld = -cockpit.GetShipVelocities().LinearVelocity;
         }
 
         public void Save() {
@@ -45,10 +45,10 @@ namespace IngameScript {
                 return;
             } else if((updateSource & (UpdateType.Terminal | UpdateType.Script | UpdateType.Trigger | UpdateType.Mod)) != 0) {
                 if(argument == "align") {
-                    orient.target = -cockpit.GetShipVelocities().LinearVelocity;
+                    orient.gyro.OrientWorld = -cockpit.GetShipVelocities().LinearVelocity;
                     orient.Begin(); 
                 } else if(argument == "retro") {
-                    orient.target = -cockpit.GetShipVelocities().LinearVelocity;
+                    orient.gyro.OrientWorld = -cockpit.GetShipVelocities().LinearVelocity;
                     retro_burn.Begin(); 
                 }
                 Runtime.UpdateFrequency |= UpdateFrequency.Once;
