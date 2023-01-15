@@ -7,6 +7,7 @@ using VRage.Game.ModAPI.Ingame.Utilities;
 
 namespace IngameScript {
     class CommsBase {
+        public Sendy Sendy;
         protected Logger _log;
         protected readonly byte[] AUTHKEY = new byte[8];
         protected byte[] PARSE_AUTHKEY = new byte[8];
@@ -56,18 +57,26 @@ namespace IngameScript {
                 output[i] ^= 0x3E;
             }
         }
+    }
 
-        public Sendy Station(IMyIntergridCommunicationSystem IGC) => new Sendy(_log, IGC, DOMAIN, new Dictionary<string, Sendy.IDispatch>()) {
-            ListenForBroadcast = true
-        };
+    class Station: CommsBase {
+        public Station(Logger log, MyIni ini, IMyIntergridCommunicationSystem IGC) : base(log, ini) {
+            Sendy = new Sendy(_log, IGC, DOMAIN, new Dictionary<string, Sendy.IDispatch>()) {
+                ListenForBroadcast = true
+            };
+        }
+    }
 
-        public Sendy Drone(IMyIntergridCommunicationSystem IGC) => new Sendy(_log, IGC, DOMAIN, new Dictionary<string, Sendy.IDispatch>()) {
-            TransmitBroadcast = true,
-            OnConnection = (conn) => {
-                _log.Log($"conn sta @ {conn.Node}");
-                conn.OnDrop = (_) => conn.Sendy.TransmitBroadcast = true;
-                conn.Sendy.TransmitBroadcast = false;
-            },
-        };
+    class Drone: CommsBase {
+        public Drone(Logger log, MyIni ini, IMyIntergridCommunicationSystem IGC) : base(log, ini) {
+            Sendy = new Sendy(_log, IGC, DOMAIN, new Dictionary<string, Sendy.IDispatch>()) {
+                TransmitBroadcast = true,
+                OnConnection = (conn) => {
+                    _log.Log($"conn sta @ {conn.Node}");
+                    conn.OnDrop = (_) => conn.Sendy.TransmitBroadcast = true;
+                    conn.Sendy.TransmitBroadcast = false;
+                },
+            };
+        }
     }
 }

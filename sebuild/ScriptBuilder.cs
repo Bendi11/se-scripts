@@ -23,7 +23,7 @@ public class ScriptWorkspaceContext: IDisposable {
     static ScriptWorkspaceContext() { MSBuildLocator.RegisterDefaults(); }
 
     Solution sln;
-    private HashSet<ProjectId> minified = new HashSet<ProjectId>();
+    private HashSet<ProjectId> loadedDocs = new HashSet<ProjectId>();
     
     /// <summary>Create a new <c>ScriptWorkspaceContext</c></summary>
     /// <param name="path">
@@ -48,39 +48,52 @@ public class ScriptWorkspaceContext: IDisposable {
     
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
     async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false) {
-        Solution newsln;
-        Project proj;
+        var docs = new List<Document>();
         if(rename) {
-            (newsln, proj) = await MinifyProject(sln, p);
+            var mini = await MinifyProject(sln, p, docs);
+            loadedDocs.Clear();
+            GetDocuments(mini, p, docs);
         } else {
-            newsln = sln;
-            proj = sln.GetProject(p) ?? throw new Exception($"Failed to find project in solution {sln.FilePath} with ID {p}");
+            GetDocuments(sln, p, docs);
         }
         foreach(var diag in workspace.Diagnostics) {
             Console.WriteLine(diag);
         }
 
-        return await Preprocessor.Build(newsln, proj);
+        return await Preprocessor.Build(docs);
     }
     
     /// <summary>
     /// Minify a project and all dependencies of the project
     /// </summary>
-    async private Task<(Solution, Project)> MinifyProject(Solution sol, ProjectId p, PreMinifier? other = null) {
-        if(minified.Contains(p)) { return (sln, sln.GetProject(p) ?? throw new Exception($"Solution has no project with ID {p}")); } 
+    async private Task<Solution> MinifyProject(Solution sol, ProjectId p, List<Document> docs, PreMinifier? other = null) {
+        if(loadedDocs.Contains(p)) return sol; 
         var mini = other is null ? new PreMinifier(workspace, sol, p) : new PreMinifier(workspace, sol, p, other);
-        sol = await mini.Run();
-        minified.Add(p);
-        var fetchProject = () => sol.GetProject(p) ?? throw new Exception($"Failed to locate project with ID {p} after minification");
+        var (minisol, newproj) = await mini.Run();
+        sol = minisol;
+        
+        loadedDocs.Add(p);
 
-        foreach(var reference in fetchProject().ProjectReferences) {
-            var (newsol, _) = await MinifyProject(sol, reference.ProjectId, mini);
-            sol = newsol;
+        foreach(var reference in newproj.ProjectReferences) {
+            sol = await MinifyProject(sol, reference.ProjectId, docs, mini);
         }
 
+        return sol;
+    }
 
+    private void GetDocuments(Solution sln, ProjectId id, List<Document> docs) {
+        var getProj = (ProjectId id) => sln.GetProject(id) ?? throw new Exception($"Failed to find project in solution {sln.FilePath} with ID {id}");
+        if(loadedDocs.Contains(id)) { return; }
+        loadedDocs.Add(id);
 
-        return (sol, fetchProject());
+        var proj = getProj(id);
+        foreach(var doc in proj.Documents) {
+            docs.Add(doc);
+        }
+
+        foreach(var dep in proj.ProjectReferences) {
+            GetDocuments(sln, dep.ProjectId, docs);
+        }
     }
     
     #pragma warning disable 8618 
@@ -134,7 +147,6 @@ public class ScriptWorkspaceContext: IDisposable {
         };
         
         private class NameGenerator {
-            int _nChars = 1;
             List<IEnumerator<char>> _gen = new List<IEnumerator<char>>();
 
             public NameGenerator() {
@@ -225,9 +237,10 @@ public class ScriptWorkspaceContext: IDisposable {
             _project = project;
         }
 
-        async public Task<Solution> Run() {
+        async public Task<(Solution, Project)> Run() {
+            Project project;
             for(;;) {
-                var project = _final.GetProject(_project) ?? throw new Exception($"Failed to locate project with ID {_project}");
+                project = _final.GetProject(_project) ?? throw new Exception($"Failed to locate project with ID {_project}");
                 _comp = await project.GetCompilationAsync() ?? throw new Exception($"Failed to get compilation for {project.Name}");
                 bool renamedInDoc = false;
                 foreach(var doc in project.Documents) {
@@ -245,7 +258,7 @@ public class ScriptWorkspaceContext: IDisposable {
                 if(!renamedInDoc) { break; }
             }
 
-            return _final;
+            return (_final, project);
         }
 
         private class RenamerWalker: CSharpSyntaxWalker {
@@ -270,6 +283,11 @@ public class ScriptWorkspaceContext: IDisposable {
             public override void VisitEnumDeclaration(EnumDeclarationSyntax node) {
                 AttemptRename(node);
                 base.VisitEnumDeclaration(node);
+            }
+
+            public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax node) {
+                AttemptRename(node);
+                base.VisitInterfaceDeclaration(node);
             }
 
             public override void VisitEnumMemberDeclaration(EnumMemberDeclarationSyntax node) {
@@ -351,18 +369,13 @@ public class ScriptWorkspaceContext: IDisposable {
     /// final declarations list
     /// </summary>
     private class Preprocessor {
-        public readonly Project Project;
-        private readonly Solution sln;
-        private HashSet<ProjectId> loaded;
+        public readonly List<Document> Docs;
         List<CSharpSyntaxNode> decls;
 
-        async public static Task<List<CSharpSyntaxNode>> Build(Solution sol, Project proj) => await new Preprocessor(sol, proj).Finish(); 
+        async public static Task<List<CSharpSyntaxNode>> Build(List<Document> docs) => await new Preprocessor(docs).Finish(); 
 
-        private Preprocessor(Solution sol, Project proj, HashSet<ProjectId>? load = null, List<CSharpSyntaxNode>? dec = null) {
-            this.Project = proj;
-            this.sln = sol;
-            loaded = load ?? new HashSet<ProjectId>();
-            loaded.Add(proj.Id);
+        private Preprocessor(List<Document> docs, List<CSharpSyntaxNode>? dec = null) {
+            Docs = docs;
             decls = dec ?? new List<CSharpSyntaxNode>();
         }
         
@@ -395,21 +408,8 @@ public class ScriptWorkspaceContext: IDisposable {
             }
         }
 
-        /// <summary>
-        /// Resolve all inter-project references by emitting their code to this <c>ProjectBuilder</c>'s <c>ns</c>
-        /// </summary>
-        async private Task ResolveRefs() {
-            foreach(var reference in Project.ProjectReferences) {
-                if(loaded.Contains(reference.ProjectId)) { continue; }
-                var project = sln.GetProject(reference.ProjectId) ?? throw new Exception($"Cannot locate referenced project {reference.ProjectId}");
-                Console.WriteLine($"Resolving project reference {project.Name}");
-                await new Preprocessor(sln, project, loaded, decls).Finish();
-            }
-        }
-    
         async private Task<List<CSharpSyntaxNode>> Finish() {
-            await ResolveRefs();
-            foreach(var doc in from doc in Project.Documents where doc.Folders.FirstOrDefault() != "obj" select doc) {
+            foreach(var doc in from doc in Docs where doc.Folders.FirstOrDefault() != "obj" select doc) {
                 Console.WriteLine($"Processing {doc.FilePath}");
                 await Digest(doc);
             }

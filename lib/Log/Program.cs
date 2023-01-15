@@ -50,9 +50,8 @@ namespace IngameScript {
                 terminal.WriteText(msg.Substring(0, len), true);
                 msg = msg.Substring(len);
                 terminal.WriteText("\n", true);
+                msg_count += 1;
             }
-
-            msg_count += 1; 
         }
     }
 }

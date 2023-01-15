@@ -18,7 +18,7 @@ namespace IngameScript {
         Dictionary<string, Action> _commands = new Dictionary<string, Action>();
 
         MethodProcess _gyroAlign;
-        Sendy _sendy;
+        CommsBase _comms;
 
         public Program() {
             _log = new Logger(Me.GetSurface(0));
@@ -36,24 +36,22 @@ namespace IngameScript {
                 default: _log.Panic($"Invalid or missing config.mode key {opMode}"); break;
             }
 
-            var comms = new CommsBase(_log, _ini);
-            
             if(_mode == OperatingMode.Drone) {
                 _rc = GridTerminalSystem.GetBlockWithName("CONTROL") as IMyShipController;
                 List<IMyGyro> controlGyros = new List<IMyGyro>();
                 GridTerminalSystem.GetBlocksOfType(controlGyros);
                 _gyro = new GyroController(controlGyros, _rc);
                 _gyroAlign = new MethodProcess(GyroProcess);
-                _sendy = comms.Drone(IGC);
+                _comms = new Drone(_log, _ini, IGC);
                 _log.Log("init drone complete");
             } else {
-                _sendy = comms.Station(IGC);
+                _comms = new Station(_log, _ini, IGC);
                 _log.Log("init sta complete");
             }
 
-            _sendy.TicksPerPeriod = 100;
-            _sendy.RecvProcess.Begin();
-            _sendy.PeriodicProcess.Begin();
+            _comms.Sendy.TicksPerPeriod = 100;
+            _comms.Sendy.RecvProcess.Begin();
+            _comms.Sendy.PeriodicProcess.Begin();
             Runtime.UpdateFrequency |= UpdateFrequency.Update100;
         }
 
@@ -68,11 +66,11 @@ namespace IngameScript {
                     Runtime.UpdateFrequency |= UpdateFrequency.Once;
                 }
             } else if(updateSource.HasFlag(UpdateType.Update100)) {
-                _sendy.PeriodicProcess.Poll();
+                _comms.Sendy.PeriodicProcess.Poll();
             } else if((updateSource & (UpdateType.Terminal | UpdateType.Script | UpdateType.Trigger)) != 0) {
                 
             } else if(updateSource.HasFlag(UpdateType.IGC)) {
-                _sendy.RecvProcess.Poll();
+                _comms.Sendy.RecvProcess.Poll();
             }
         }
 
