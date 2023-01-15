@@ -1,6 +1,7 @@
 using Sandbox.ModAPI.Ingame;
 using System.Collections.Generic;
 using System;
+using System.Linq;
 using System.Collections.Immutable;
 using VRage.Game.ModAPI.Ingame.Utilities;
 
@@ -21,20 +22,24 @@ namespace IngameScript {
             if(!ini.Get("auth", "key").TryGetString(out str) || str.Length != 16) {
                 _log.Panic("Config option 'auth.key' is not a string or does not contain exactly 16 chars");
             }
+            
+            if(!TryParseKey(str, AUTHKEY)) {
+                _log.Panic("Failed to parse auth.key hex value");
+            }
         }
         
         /// <summary>
         /// Attempt to parse a hex string and assign to the given byte array
         /// </summary>
         /// <returns>true if parsing succeeded</returns>
-        protected bool TryParseKey(string key, ref byte[] output) {
-            if(key.Length * 2 != output.Length) {
+        protected bool TryParseKey(string key, byte[] output) {
+            if(key.Length != output.Length * 2) {
                 _log.Error($"authkey str len != authkey len");
                 return false;
             }
             
             try {
-                for(int i = 0; i < output.Length; ++i) {
+                for(int i = 0; i < key.Length; i += 2) {
                     output[i / 2] = Convert.ToByte(key.Substring(i, 2), 16);
                 }
             } catch(Exception e) {
@@ -48,39 +53,56 @@ namespace IngameScript {
         /// <summary>
         /// Use a simple XOR cipher to encode the given byte array for transport
         /// </summary>
-        protected void Code(ref byte[] output) {
+        protected void Code(byte[] output) {
             for(byte i = 0; i < output.Length; ++i) {
-                output[i] ^= (byte)(i * 0x2F);
+                output[i] ^= 0x3E;
             }
         }
     }
 
     class DroneCommsProcess: CommsBase {
         public IProcess RxProcess { get; private set; }
-        protected IMyBroadcastListener _broadcast_recv;
-        protected long _trustedSender = 0;
+        public IProcess TxProcess { get; private set; }
+        IMyBroadcastListener _broadcast_recv;
+        long _trustedSender = -1;
+        ulong _ticksWithoutPing = 0;
 
         public DroneCommsProcess(Logger log, IMyIntergridCommunicationSystem IGC, MyIni ini) : base(log, IGC, ini) {
             RxProcess = new MethodProcess(Run, Begin);
+            TxProcess = new MethodProcess(PingCounter);
         }
 
-        public void Begin() {   
+        void Begin() {
             _IGC.UnicastListener.DisableMessageCallback();
             _broadcast_recv = _IGC.RegisterBroadcastListener(BROADCAST_TAG);
+            _broadcast_recv.SetMessageCallback();
         }
 
-        protected IEnumerator<Void> Run() {
-            while(_trustedSender == 0) {
+        IEnumerator<Nil> PingCounter() {
+            for(;;) {
+                while(_trustedSender == -1) yield return Nil._;
+                _ticksWithoutPing += 100;
+                if(_ticksWithoutPing > 1000) {
+                    _log.Error($"ping timeout for ${_trustedSender} conn. drop");
+                    _trustedSender = -1;
+                    _ticksWithoutPing = 0;
+                    Begin();
+                }
+                yield return Nil._;
+            }
+        }
+
+        IEnumerator<Nil> Run() {
+            while(_trustedSender == -1) {
                 while(_broadcast_recv.HasPendingMessage) {
                     var msg = _broadcast_recv.AcceptMessage();
                     if(msg.Data is ImmutableArray<byte>) {
                         var recvKey = (ImmutableArray<byte>)msg.Data;
-                        if(recvKey.Length != PARSE_AUTHKEY.Length) { continue; }
-                        for(int i = 0; i < recvKey.Length; ++i) { PARSE_AUTHKEY[i] = recvKey[i]; }
-                        //recvKey.AsMemory().CopyTo(PARSE_AUTHKEY.AsMemory());
-                        Code(ref PARSE_AUTHKEY);
+                        if(recvKey.Length != PARSE_AUTHKEY.Length) { _log.Log("rec key len is not equal"); continue; }
+                        recvKey.CopyTo(0, PARSE_AUTHKEY, 0, PARSE_AUTHKEY.Length);
+                        Code(PARSE_AUTHKEY);
 
-                        if(PARSE_AUTHKEY.Equals(AUTHKEY)) {
+                        if(Enumerable.SequenceEqual(PARSE_AUTHKEY, AUTHKEY)) {
                             _trustedSender = msg.Source;
                             _log.Log($"{_trustedSender} has good key");
                             _IGC.DisableBroadcastListener(_broadcast_recv);
@@ -89,18 +111,20 @@ namespace IngameScript {
                         }
                     }
                 }
-                yield return Void._;
+
+                yield return Nil._;
             }
+
             for(;;) {
                 while(_IGC.UnicastListener.HasPendingMessage) {
                     var msg = _IGC.UnicastListener.AcceptMessage();
                     if(msg.Source != _trustedSender) { continue; }
                     if(msg.Tag == PING_TAG) {
-                        _IGC.SendUnicastMessage<object>(_trustedSender, PING_TAG, null);
+                        _IGC.SendUnicastMessage<Boolean>(_trustedSender, PING_TAG, true);
                         _log.Log($"ping resp. -> {_trustedSender}");
                     }
                 }
-                yield return Void._;
+                yield return Nil._;
             }
         }
     }
@@ -123,6 +147,7 @@ namespace IngameScript {
 
         public StationCommsProcess(Logger log, IMyIntergridCommunicationSystem IGC, MyIni ini) : base(log, IGC, ini) {
             RxProc = new MethodProcess(RunRx, BeginRx);
+            TxProc = new MethodProcess(RunTx);
         }
         
 
@@ -130,7 +155,7 @@ namespace IngameScript {
             _IGC.UnicastListener.SetMessageCallback();
         }
 
-        IEnumerator<Void> RunRx() {
+        IEnumerator<Nil> RunRx() {
             for(;;) {
                 while(_IGC.UnicastListener.HasPendingMessage) {
                     var msg = _IGC.UnicastListener.AcceptMessage();
@@ -146,20 +171,20 @@ namespace IngameScript {
                                 client.DroppedPings = Math.Max(client.DroppedPings - 1, 0);
                             }
                         break;
-                    } 
+                    }
                 }
+                yield return Nil._;
             }
         }
 
-        IEnumerator<Void> RunTx() {
+        IEnumerator<Nil> RunTx() {
             for(;;) {
-                for(int i = 0; i < 10; ++i) yield return Void._;
-                PARSE_AUTHKEY = AUTHKEY;
-                Code(ref PARSE_AUTHKEY);
+                for(int i = 0; i < 5; ++i) { yield return Nil._; }
+                AUTHKEY.CopyTo(PARSE_AUTHKEY, 0);
+                Code(PARSE_AUTHKEY);
                 _IGC.SendBroadcastMessage(BROADCAST_TAG, ImmutableArray.Create(PARSE_AUTHKEY));
-                _log.Log("key broadcast");
 
-                yield return Void._;
+                yield return Nil._;
                 
                 long toRemove = -1;
                 foreach(var addr in _connected.Keys) {
@@ -171,7 +196,7 @@ namespace IngameScript {
                     }
 
                     client.DroppedPings += 1;
-                    _IGC.SendUnicastMessage<object>(addr, PING_TAG, null);
+                    _IGC.SendUnicastMessage<Boolean>(addr, PING_TAG, false);
                     _log.Log($"ping -> {addr}");
                 }
 

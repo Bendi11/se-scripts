@@ -371,6 +371,10 @@ public class ScriptWorkspaceContext: IDisposable {
             public PreprocessWalker(List<CSharpSyntaxNode> dec) : base(SyntaxWalkerDepth.Trivia) {
                 decls = dec;
             }
+
+            public override void VisitStructDeclaration(StructDeclarationSyntax node) => decls.Add(node);
+
+            public override void VisitEnumDeclaration(EnumDeclarationSyntax node) => decls.Add(node);
             
             public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
                 if(
@@ -405,7 +409,6 @@ public class ScriptWorkspaceContext: IDisposable {
     
         async private Task<List<CSharpSyntaxNode>> Finish() {
             await ResolveRefs();
-            Console.WriteLine($"{Project.Name}");
             foreach(var doc in from doc in Project.Documents where doc.Folders.FirstOrDefault() != "obj" select doc) {
                 Console.WriteLine($"Processing {doc.FilePath}");
                 await Digest(doc);

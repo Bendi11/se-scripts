@@ -37,20 +37,24 @@ namespace IngameScript {
                 default: _log.Panic($"Invalid or missing config.mode key {opMode}"); break;
             }
             
-            List<IMyGyro> controlGyros = new List<IMyGyro>();
-            if(_mode == OperatingMode.Drone) GridTerminalSystem.GetBlocksOfType(controlGyros);
-            _gyroAlign = new MethodProcess(GyroProcess);
-            
             if(_mode == OperatingMode.Drone) {
                 _rc = GridTerminalSystem.GetBlockWithName("CONTROL") as IMyShipController;
+                List<IMyGyro> controlGyros = new List<IMyGyro>();
+                GridTerminalSystem.GetBlocksOfType(controlGyros);
                 _gyro = new GyroController(controlGyros, _rc);
+                _gyroAlign = new MethodProcess(GyroProcess);
                 var comms = new DroneCommsProcess(_log, IGC, _ini);
                 _rx = comms.RxProcess;
+                _rx.Begin();
+                _log.Log("init drone complete");
             } else {
                 var comms = new StationCommsProcess(_log, IGC, _ini);
                 _rx = comms.RxProc;
                 _tx = comms.TxProc;
+                _rx.Begin();
+                _tx.Begin();
                 Runtime.UpdateFrequency |= UpdateFrequency.Update100;
+                _log.Log("init sta complete");
             }
         }
 
@@ -65,7 +69,7 @@ namespace IngameScript {
                     Runtime.UpdateFrequency |= UpdateFrequency.Once;
                 }
             } else if(updateSource.HasFlag(UpdateType.Update100)) {
-
+                _tx.Poll();
             } else if((updateSource & (UpdateType.Terminal | UpdateType.Script | UpdateType.Trigger)) != 0) {
                 
             } else if(updateSource.HasFlag(UpdateType.IGC)) {
@@ -73,12 +77,12 @@ namespace IngameScript {
             }
         }
 
-        IEnumerator<Void> GyroProcess() {
+        IEnumerator<Nil> GyroProcess() {
             try {
                 _gyro.Enable();
                 for(;;) {
                     _gyro.Step();
-                    yield return Void._;
+                    yield return Nil._;
                 }
             } finally {
                 _gyro.Disable();

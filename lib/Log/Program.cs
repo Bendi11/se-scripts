@@ -20,9 +20,12 @@ namespace IngameScript {
             terminal.ContentType = ContentType.TEXT_AND_IMAGE;
             terminal.Font = "Monospace";
             terminal.FontColor = Color.Lime;
-            terminal.FontSize = 1.3F;
-            var sz = terminal.MeasureStringInPixels(new StringBuilder('A'), "Monospace", 1.3F);
-            BOUNDS = terminal.SurfaceSize / sz;
+            terminal.FontSize = 0.7F;
+            terminal.TextPadding = 0F;
+            var sb = new StringBuilder();
+            sb.Append('A');
+            var sz = terminal.MeasureStringInPixels(sb, "Monospace", terminal.FontSize);
+            BOUNDS = (terminal.SurfaceSize - sz) / sz;
         }
         
         /// <summary>
