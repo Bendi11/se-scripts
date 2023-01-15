@@ -11,7 +11,7 @@ namespace IngameScript {
         }
         public bool Validate(object d) => d is T; 
         public void ExecuteRaw(Sendy.Connection c, object d) => _f(c, (T)d);
-    } 
+    }
 
     /// <summary>
     /// General purpose unicast communications protocol with boilerplate
@@ -23,9 +23,10 @@ namespace IngameScript {
 
         public int TicksPerPeriod = 10;
         public int PingPeriod = 750;
-        public int DiscoverPeriod = 1000;
+        public int DiscoverPeriod = 500;
         public int PendingTimeout = 500;
         public int PingsBeforeDrop = 5;
+        public Action<Connection> OnConnection;
 
         public const string 
             SENDY_DOMAIN = "sendy",
@@ -38,16 +39,15 @@ namespace IngameScript {
 
         IMyIntergridCommunicationSystem _igc;
         IMyBroadcastListener _discover;
-        Dictionary<long, Connection> _connections;
+        Dictionary<long, Connection> _connections = new Dictionary<long, Connection>();
 
         ImmutableDictionary<string, Action<MyIGCMessage>> _defaultActions;
         ImmutableDictionary<string, IDispatch> _actions;
-        Dictionary<long, PendingConnection> _pending = new Dictionary<long, PendingConnection>();
+        PendingConnection _pending;
         Logger _log;
 
         struct PendingConnection {
-            public long TicksPending;
-            public long Magic;
+            public long TicksPending, Node;
         }
         
         public Sendy(Logger log, IMyIntergridCommunicationSystem IGC, string domain, IDictionary<string, IDispatch> dict) : this(log, IGC, domain, dict.ToImmutableDictionary()) {}
@@ -56,21 +56,22 @@ namespace IngameScript {
             _log = log;
             Domain = domain;
             _igc = IGC;
+            _pending.Node = -1;
             RecvProcess = new MethodProcess(Receive, StartReceive);
+            PeriodicProcess = new MethodProcess(Periodic);
             _defaultActions = new Dictionary<string, Action<MyIGCMessage>> {
                 {
                     CONN,
                     (msg) => {
-                        _igc.SendUnicastMessage(msg.Source, ESTABLISH_CONF, (long)msg.Data);
+                        _igc.SendUnicastMessage(msg.Source, ESTABLISH_CONF, 0);
                         ConfirmConnection(msg.Source);
                     }
                 },
                 {
                     ESTABLISH_CONF,
                     (msg) => {
-                        PendingConnection pending;
-                        if(_pending.TryGetValue(msg.Source, out pending) && msg.Data is long && (long)msg.Data == pending.Magic) {
-                            _pending.Remove(msg.Source);
+                        if(_pending.Node == msg.Source) {
+                            _pending.Node = -1;
                             ConfirmConnection(msg.Source);
                         }
                     }
@@ -78,9 +79,12 @@ namespace IngameScript {
                 {
                     DISCOVER,
                     (msg) => {
-                        if(_pending.ContainsKey(msg.Source) || _connections.ContainsKey(msg.Source)) { return; }
-                        if(msg.Data is string && msg.Data.Equals(Domain)) {
-                            BeginEstablish(msg.Source); 
+                        if(_connections.ContainsKey(msg.Source)) return;
+
+                        if(msg.Data.Equals(Domain)) {
+                            BeginEstablish(msg.Source, false); 
+                        } else {
+                            _log.Log($"{msg.Data.ToString()} != {Domain}");
                         }
                     }
                 }
@@ -101,18 +105,20 @@ namespace IngameScript {
         private void ConfirmConnection(long source) {
             var conn = new Connection(this, source);
             _connections.Add(source, conn);
+            if(OnConnection != null) OnConnection(conn);
         }
 
-        private void BeginEstablish(long addr) {
-            var magic = Random.Shared.NextInt64();
-            _pending.Add(addr, new PendingConnection { TicksPending = 0, Magic = magic });
-            _igc.SendUnicastMessage(addr, CONN, magic);
+        private void BeginEstablish(long addr, bool force) {
+            if(_pending.Node != -1 && !force) { _log.Log("pending conn. blocks attempted connection"); return; }
+            _pending.Node = addr;
+            _pending.TicksPending = 0;
+            _igc.SendUnicastMessage(addr, CONN, 0);
         }
 
         /// <summary>
         /// Attempt to send a unicast connection establish message to the given address
         /// </summary>
-        public void Establish(long addr) => BeginEstablish(addr);
+        public void Establish(long addr, bool force = false) => BeginEstablish(addr, force);
 
         /// <summary>
         /// If <c>true</c>, listen for broadcast messages from other nodes
@@ -125,7 +131,9 @@ namespace IngameScript {
             set {
                 if(_discover == null && value) {
                     _discover = _igc.RegisterBroadcastListener(DISCOVER);
+                    _discover.SetMessageCallback();
                 } else if(!value){
+                    _discover.DisableMessageCallback();
                     while(_discover.HasPendingMessage) _discover.AcceptMessage();
                     _igc.DisableBroadcastListener(_discover);
                 }
@@ -142,7 +150,7 @@ namespace IngameScript {
 
         private IEnumerator<Nil> Periodic() {
             for(;;) {
-                var passedTicks = TicksPerPeriod * 2;
+                var passedTicks = TicksPerPeriod;
                 if(TransmitBroadcast) {
                     _ticksSinceBroadcast += passedTicks;
                     if(_ticksSinceBroadcast >= DiscoverPeriod) {
@@ -150,34 +158,32 @@ namespace IngameScript {
                         _igc.SendBroadcastMessage(DISCOVER, Domain);
                     }
                 }
-                
-                long toRemove = -1;
-                foreach(var source in _pending.Keys) {
-                    var pend = _pending[source];
-                    pend.TicksPending += TicksPerPeriod;
-                    if(pend.TicksPending >= PendingTimeout) {
-                        toRemove = source;
+
+                if(_pending.Node != -1) {
+                    _pending.TicksPending += TicksPerPeriod;
+                    if(_pending.TicksPending >= PendingTimeout) {
+                        _log.Log($"pending {_pending.Node} timeout");
+                        _pending.Node = -1;
                         break;
                     }
                 }
-                if(toRemove != -1) _pending.Remove(toRemove);
 
-                yield return Nil._;
-                
-                toRemove = -1;
+                long toRemove = -1;
                 foreach(var conn in _connections.Values) {
                     conn.TicksSincePing += passedTicks;
                     if(conn.TicksSincePing >= PingPeriod) {
                         conn.TicksSincePing = 0;
                         conn.MissedPings += 1;
+                        conn.Send(PING, 0);
                         if(conn.MissedPings > PendingTimeout) {
                             toRemove = conn.Node;
+                            _log.Log($"conn {conn.Node} ping timeout");
                             break;
                         }
                     }
                 }
 
-                if(toRemove != -1) _connections.Remove(toRemove);
+                if(toRemove != -1) _connections[toRemove].Close();
 
                 yield return Nil._;
             }
@@ -200,7 +206,7 @@ namespace IngameScript {
         private void ProcessMessage(MyIGCMessage msg) {
             _log.Log($"{msg.Source} -> {msg.Tag} ({msg.Data.ToString()})");
             var first = _defaultActions.GetValueOrDefault(msg.Tag);
-            if(first != null) first(msg);
+            if(first != null) { first(msg); return; }
 
             Connection conn;
             if(_connections.TryGetValue(msg.Source, out conn)) {
@@ -218,12 +224,13 @@ namespace IngameScript {
         /// </summary>
         public class Connection {
             public readonly long Node;
-            public long MissedPings;
-            public long TicksSincePing;
+            public long MissedPings, TicksSincePing;
             public readonly Sendy Sendy;
+            public Action<Connection> OnDrop;
             
             public void Send<T>(string tag, T data) => Sendy._igc.SendUnicastMessage(Node, tag, data);
             public void Close() {
+                if(OnDrop != null) OnDrop(this);
                 Send<int>(Sendy.DROP, 0);
                 Sendy._connections.Remove(Node);
             }

@@ -62,7 +62,12 @@ namespace IngameScript {
         };
 
         public Sendy Drone(IMyIntergridCommunicationSystem IGC) => new Sendy(_log, IGC, DOMAIN, new Dictionary<string, Sendy.IDispatch>()) {
-            TransmitBroadcast = true
+            TransmitBroadcast = true,
+            OnConnection = (conn) => {
+                _log.Log($"conn sta @ {conn.Node}");
+                conn.OnDrop = (_) => conn.Sendy.TransmitBroadcast = true;
+                conn.Sendy.TransmitBroadcast = false;
+            },
         };
     }
 }
