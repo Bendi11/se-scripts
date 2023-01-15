@@ -120,6 +120,7 @@ namespace IngameScript {
                     var msg = _IGC.UnicastListener.AcceptMessage();
                     if(msg.Source != _trustedSender) { continue; }
                     if(msg.Tag == PING_TAG) {
+                        _ticksWithoutPing = 0;
                         _IGC.SendUnicastMessage<Boolean>(_trustedSender, PING_TAG, true);
                         _log.Log($"ping resp. -> {_trustedSender}");
                     }
