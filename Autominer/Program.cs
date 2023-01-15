@@ -20,25 +20,54 @@ using System.Collections.Immutable;
 using System.Collections;
 
 namespace IngameScript {
-    partial class Program: MyGridProgram {
+    public enum OperatingMode {
+        Station,
+        Drone
+    }
+
+    partial class Program: MyGridProgram {        
+        OperatingMode _mode;
         Logger _log;
+        MyIni _ini;
         GyroController _gyro;
         IMyShipController _rc;
         Dictionary<string, Action> _commands = new Dictionary<string, Action>();
-        IMyBroadcastListener _recv;
 
         MethodProcess _gyroAlign;
+        IProcess _rx;
+        IProcess _tx;
 
         public Program() {
+            _log = new Logger(Me.GetSurface(0));
+
+            _ini = new MyIni();
+            MyIniParseResult parseResult;
+            if(!_ini.TryParse(Me.CustomData, out parseResult)) {
+                _log.Panic($"parse conf. @ line {parseResult.LineNo}");
+            }
+            
+            string opMode = _ini.Get("config", "mode").ToString();
+            switch(opMode) {
+                case "sta": _mode = OperatingMode.Station; break;
+                case "dro": _mode = OperatingMode.Drone; break;
+                default: _log.Panic($"Invalid or missing config.mode key {opMode}"); break;
+            }
+            
             List<IMyGyro> controlGyros = new List<IMyGyro>();
-            GridTerminalSystem.GetBlocksOfType(controlGyros);
+            if(_mode == OperatingMode.Drone) GridTerminalSystem.GetBlocksOfType(controlGyros);
             _gyroAlign = new MethodProcess(GyroProcess);
             
-            _log = new Logger(Me.GetSurface(0));
-            _rc = GridTerminalSystem.GetBlockWithName("CONTROLLER") as IMyShipController;
-            _gyro = new GyroController(controlGyros, _rc);
-            _recv = IGC.RegisterBroadcastListener("mine");
-            _recv.SetMessageCallback();
+            if(_mode == OperatingMode.Drone) {
+                _rc = GridTerminalSystem.GetBlockWithName("CONTROL") as IMyShipController;
+                _gyro = new GyroController(controlGyros, _rc);
+                var comms = new DroneCommsProcess(_log, IGC, _ini);
+                _rx = comms.RxProcess;
+            } else {
+                var comms = new StationCommsProcess(_log, IGC, _ini);
+                _rx = comms.RxProc;
+                _tx = comms.TxProc;
+                Runtime.UpdateFrequency |= UpdateFrequency.Update100;
+            }
         }
 
         public void Save() {
@@ -51,21 +80,21 @@ namespace IngameScript {
                 if(!done) {
                     Runtime.UpdateFrequency |= UpdateFrequency.Once;
                 }
+            } else if(updateSource.HasFlag(UpdateType.Update100)) {
+
             } else if((updateSource & (UpdateType.Terminal | UpdateType.Script | UpdateType.Trigger)) != 0) {
                 
             } else if(updateSource.HasFlag(UpdateType.IGC)) {
-                while(_recv.HasPendingMessage) {
-                    var msg = _recv.AcceptMessage();
-                }
+                _rx.Poll();
             }
         }
 
-        IEnumerator<IProcess.Void> GyroProcess() {
+        IEnumerator<Void> GyroProcess() {
             try {
                 _gyro.Enable();
                 for(;;) {
                     _gyro.Step();
-                    yield return IProcess.VOID;
+                    yield return Void._;
                 }
             } finally {
                 _gyro.Disable();

@@ -3,16 +3,15 @@ using System;
 
 namespace IngameScript {
     /// <summary>
+    /// Empty record type that fills the generic type parameter of <c>IEnumerator</c>
+    /// </summary>
+    public struct Void { public static readonly Void _; }
+
+    /// <summary>
     /// Lightweight process interface used to implement multi-tick procedures using <c>IEnumerator</c> and 
     /// built-in language support for state machines using <c>yield</c>
     /// </summary>
     public abstract class IProcess {
-
-        /// <summary>
-        /// Empty record type that fills the generic type parameter of <c>IEnumerator</c>
-        /// </summary>
-        public struct Void {}
-        public readonly static Void VOID;
         protected IEnumerator<Void> _prog;
         public IEnumerator<Void> Progress {
             get { return _prog; }
@@ -34,12 +33,12 @@ namespace IngameScript {
         /// <summary>
         /// Begin the process, disposing of the state machine if the process was already running
         /// </summary>
-        public void Begin() => Progress = Run();
+        public virtual void Begin() => Progress = Run();
 
         /// <summary>
         /// Stop the process, disposing of the state machine
         /// </summary>
-        public void Stop() => Progress = null;
+        public virtual void Stop() => Progress = null;
 
         protected abstract IEnumerator<Void> Run();
         
@@ -70,10 +69,27 @@ namespace IngameScript {
     /// </summary>
     public sealed class MethodProcess: IProcess {
         Func<IEnumerator<Void>> _func;
-        public MethodProcess(Func<IEnumerator<Void>> func) {
+        Action _start;
+        Action _end;
+        
+        /// <summary>
+        /// Create a new <c>MethodProcess</c> from the given process method, plus optional setup and takedown functions
+        /// </summary>
+        public MethodProcess(Func<IEnumerator<Void>> func, Action start = null, Action end = null) {
             _func = func;
+            _start = start;
+            _end = end;
         }
 
+        public override void Begin() {
+            if(_start != null) _start();
+            base.Begin();
+        }
+
+        public override void Stop() {
+            if(_end != null) _end();
+            base.Stop();
+        }
         protected override IEnumerator<Void> Run() => _func();
     }
 }
