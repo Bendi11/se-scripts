@@ -44,12 +44,16 @@ internal class Program {
                     string output = sb.ToString();
                     using var file = new StreamWriter(File.Create(path));
                     
-                    Console.WriteLine($"Writing output {path}");
+                    Console.Write($"Writing output {path}");
+                    long len = 0;
                     if(build.Minify) {
-                        foreach(var tok in Minifier.Minify(output)) { file.Write(tok); }
+                        foreach(var tok in Minifier.Minify(output)) { file.Write(tok); len += tok.Length; }
                     } else {
+                        len = output.Length;
                         file.Write(output);
                     }
+
+                    Console.WriteLine($" ({len} characters)");
                 },
                 async (errs) => await Task.Run(() => {
                     foreach(var err in errs) {
