@@ -20,16 +20,20 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-        GyroController gyro;
-        IMyShipController rc;
+        Logger _log;
+        GyroController _gyro;
+        IMyShipController _rc;
+        Dictionary<string, Action> _commands = new Dictionary<string, Action>();
+
+        IEnumerator _antennarecv;
 
         public Program() {
             List<IMyGyro> controlGyros = new List<IMyGyro>();
             GridTerminalSystem.GetBlocksOfType(controlGyros);
-
-            rc = GridTerminalSystem.GetBlockWithName("CONTROLLER") as IMyShipController;
-            gyro = new GyroController(controlGyros, rc);
-            Runtime.UpdateFrequency |= UpdateFrequency.Update10;
+            
+            _log = new Logger(Me.GetSurface(0));
+            _rc = GridTerminalSystem.GetBlockWithName("CONTROLLER") as IMyShipController;
+            _gyro = new GyroController(controlGyros, _rc);
         }
 
         public void Save() {
@@ -38,12 +42,15 @@ namespace IngameScript {
 
         public void Main(string argument, UpdateType updateSource) {
             if(updateSource.HasFlag(UpdateType.Trigger) && argument.Equals("align")) {
-                gyro.OrientLocal = Vector3.Up;
-                foreach(var g in gyro.Gyros) {
+                _gyro.OrientLocal = Vector3.Up;
+                foreach(var g in _gyro.Gyros) {
                     g.GyroOverride = true;
                 }
+            } else if(updateSource.HasFlag(UpdateType.IGC)) {
+                
             }
-            Echo(""+gyro.Step());
+
+            _log.Log(""+_gyro.Step());
         }
     }
 }

@@ -5,6 +5,9 @@ using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
 namespace IngameScript {
+    /// <summary>
+    /// Simple logging facility supporting many screen sizes and automatic text wrapping
+    /// </summary>
     public class Logger {
         IMyTextSurface terminal;
         int msg_count = 0;

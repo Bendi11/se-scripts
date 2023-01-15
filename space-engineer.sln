@@ -16,6 +16,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Log", "lib\Log\Log.csproj",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Autominer", "Autominer\Autominer.csproj", "{C8431B7B-1F58-4E90-BFE0-76DB9896CF1E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Process", "lib\Process\Process.csproj", "{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}"
+EndProject
 Global
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -101,8 +103,21 @@ Global
 		{C8431B7B-1F58-4E90-BFE0-76DB9896CF1E}.Release|x64.Build.0 = Release|Any CPU
 		{C8431B7B-1F58-4E90-BFE0-76DB9896CF1E}.Release|x86.ActiveCfg = Release|Any CPU
 		{C8431B7B-1F58-4E90-BFE0-76DB9896CF1E}.Release|x86.Build.0 = Release|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Debug|x64.Build.0 = Debug|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Debug|x86.Build.0 = Debug|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Release|x64.ActiveCfg = Release|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Release|x64.Build.0 = Release|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Release|x86.ActiveCfg = Release|Any CPU
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{3EE15A5F-3A7B-46AB-B01F-B51EEAB4CDBD} = {7A99075E-3864-4876-AC3B-75D9C9F55A46}
+		{D7B3C6E1-3787-4ECF-ADC0-FCFCC663307C} = {7A99075E-3864-4876-AC3B-75D9C9F55A46}
 	EndGlobalSection
 EndGlobal
