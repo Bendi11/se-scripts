@@ -96,9 +96,7 @@ namespace IngameScript {
                 )
                 .Add(
                     DROP,
-                    new Dispatch<int>((conn, data) => {
-                        _connections.Remove(conn.Node);
-                    })
+                    new Dispatch<int>((conn, _) => conn.Close())
                 );
         }
 
@@ -164,7 +162,6 @@ namespace IngameScript {
                     if(_pending.TicksPending >= PendingTimeout) {
                         _log.Log($"pending {_pending.Node} timeout");
                         _pending.Node = -1;
-                        break;
                     }
                 }
 
@@ -175,7 +172,7 @@ namespace IngameScript {
                         conn.TicksSincePing = 0;
                         conn.MissedPings += 1;
                         conn.Send(PING, 0);
-                        if(conn.MissedPings > PendingTimeout) {
+                        if(conn.MissedPings > PingsBeforeDrop) {
                             toRemove = conn.Node;
                             _log.Log($"conn {conn.Node} ping timeout");
                             break;
@@ -238,7 +235,7 @@ namespace IngameScript {
             public Connection(Sendy sendy, long addr) {
                 Node = addr;
                 Sendy = sendy;
-                MissedPings = 0;
+                MissedPings = TicksSincePing = 0;
             }
         }
 
