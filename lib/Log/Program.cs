@@ -24,6 +24,14 @@ namespace IngameScript {
             var sz = terminal.MeasureStringInPixels(new StringBuilder('A'), "Monospace", 1.3F);
             BOUNDS = terminal.SurfaceSize / sz;
         }
+        
+        /// <summary>
+        /// Display a given panic message on the terminal and throw an exception with the message
+        /// </summary>
+        public void Panic(string msg) {
+            Log("[FTL]" + msg);
+            throw new Exception(msg);
+        }
 
         public void Error(string msg) { Log("[ERR]" + msg); }
         public void Warn(string msg) { Log("[WRN]" + msg); }

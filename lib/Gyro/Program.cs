@@ -30,7 +30,18 @@ namespace IngameScript {
             Matrix or;
             _ref.Orientation.GetMatrix(out or);
             _localAlign = or.Forward;
+            Disable();
         }
+        
+        /// <summary>
+        /// Enable gyro override on all controlled gyroscopes
+        /// </summary>
+        public void Enable() { foreach(var gyro in Gyros) { gyro.GyroOverride = true; } }
+
+        /// <summary>
+        /// Disable gyro override for all controlled gyroscopes
+        /// </summary>
+        public void Disable() { foreach(var gyro in Gyros) { gyro.GyroOverride = false; }}
         
         /// <summary>
         /// Run a single gyroscope control step, adjusting the gyros as needed to align the reference block with the current
