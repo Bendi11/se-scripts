@@ -1,21 +1,6 @@
-using Sandbox.Game.EntityComponents;
 using Sandbox.ModAPI.Ingame;
-using Sandbox.ModAPI.Interfaces;
-using SpaceEngineers.Game.ModAPI.Ingame;
 using System.Collections.Generic;
-using System.Collections;
-using System.Linq;
-using System.Text;
 using System;
-using VRage.Collections;
-using VRage.Game.Components;
-using VRage.Game.GUI.TextPanel;
-using VRage.Game.ModAPI.Ingame.Utilities;
-using VRage.Game.ModAPI.Ingame;
-using VRage.Game.ObjectBuilders.Definitions;
-using VRage.Game;
-using VRage;
-using VRageMath;
 using System.Collections.Immutable;
 
 namespace IngameScript {
@@ -42,7 +27,12 @@ namespace IngameScript {
         Dictionary<long, Connection> _connections;
 
         ImmutableDictionary<string, Action<MyIGCMessage>> _defaultActions;
-        Dictionary<long, long> a;
+        Dictionary<long, PendingConnection> _pending = new Dictionary<long, PendingConnection>();
+
+        struct PendingConnection {
+            public long TicksPending;
+            public long Magic;
+        }
 
         public Sendy(IMyIntergridCommunicationSystem IGC, string domain) {
             Domain = domain;
@@ -64,7 +54,20 @@ namespace IngameScript {
                 {
                     ESTABLISH_CONF,
                     (msg) => {
-
+                        PendingConnection pending;
+                        if(_pending.TryGetValue(msg.Source, out pending) && msg.Data is long && (long)msg.Data == pending.Magic) {
+                            _pending.Remove(msg.Source);
+                            ConfirmConnection(msg.Source);
+                        }
+                    }
+                },
+                {
+                    DISCOVER,
+                    (msg) => {
+                        if(_pending.ContainsKey(msg.Source) || _connections.ContainsKey(msg.Source)) { return; }
+                        if(msg.Data is string && msg.Data.Equals(Domain)) {
+                            BeginEstablish(msg.Source); 
+                        }
                     }
                 }
             }.ToImmutableDictionary();
@@ -75,10 +78,16 @@ namespace IngameScript {
             _connections.Add(source, conn);
         }
 
+        private void BeginEstablish(long addr) {
+            var magic = Random.Shared.NextInt64();
+            _pending.Add(addr, new PendingConnection { TicksPending = 0, Magic = magic });
+            _igc.SendUnicastMessage(addr, ESTABLISH, magic);
+        }
+
         /// <summary>
         /// Attempt to send a unicast connection establish message to the given address
         /// </summary>
-        public void Establish(long addr, string domain = null) => _igc.SendUnicastMessage(addr, ESTABLISH, domain ?? Domain);
+        public void Establish(long addr) => BeginEstablish(addr);
 
         /// <summary>
         /// If <c>true</c>, listen for broadcast messages from other nodes
@@ -114,6 +123,18 @@ namespace IngameScript {
                         _igc.SendBroadcastMessage(DISCOVER, Domain);
                     }
                 }
+                
+                long toRemove = -1;
+                foreach(var source in _pending.Keys) {
+                    var pend = _pending[source];
+                    pend.TicksPending += TicksPerPeriod;
+                    if(pend.TicksPending > 500) { toRemove = source; break; }
+                }
+                if(toRemove != -1) {
+                    _pending.Remove(toRemove);
+                }
+
+                yield return Nil._;
             }
         }
 
@@ -134,6 +155,14 @@ namespace IngameScript {
         private void ProcessMessage(MyIGCMessage msg) {
             var first = _defaultActions.GetValueOrDefault(msg.Tag);
             if(first != null) first(msg);
+
+            Connection conn;
+            if(_connections.TryGetValue(msg.Source, out conn)) {
+                var act = conn.Actions.GetValueOrDefault(msg.Tag);
+                if(act != null && act.Validate(msg.Data)) {
+                    act.ExecuteRaw(conn, msg.Data);
+                }
+            } 
         }
     }
 }
