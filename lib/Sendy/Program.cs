@@ -4,22 +4,36 @@ using System;
 using System.Collections.Immutable;
 
 namespace IngameScript {
+    public class Dispatch<T>: Sendy.IDispatch {
+        Action<Sendy.Connection, T> _f;
+        public Dispatch(Action<Sendy.Connection, T> f) {
+            _f = f;
+        }
+        public bool Validate(object d) => d is T; 
+        public void ExecuteRaw(Sendy.Connection c, object d) => _f(c, (T)d);
+    } 
+
     /// <summary>
     /// General purpose unicast communications protocol with boilerplate
     /// reducing methods to register actions for specific requests
     /// </summary>
-    class Sendy {
+    public class Sendy {
         public readonly IProcess RecvProcess, PeriodicProcess;
         public string Domain;
 
         public int TicksPerPeriod = 10;
+        public int PingPeriod = 750;
         public int DiscoverPeriod = 1000;
+        public int PendingTimeout = 500;
+        public int PingsBeforeDrop = 5;
 
         public const string 
             SENDY_DOMAIN = "sendy",
-            ESTABLISH = SENDY_DOMAIN + ".establish",
-            ESTABLISH_CONF = ESTABLISH + ".confirm",
-            ESTABLISH_DENY = ESTABLISH + ".deny",
+            CONN = SENDY_DOMAIN + ".conn",
+            ESTABLISH_CONF = CONN + ".confirm",
+            ESTABLISH_DENY = CONN + ".deny",
+            DROP = CONN + ".drop",
+            PING = SENDY_DOMAIN + ".ping",
             DISCOVER = SENDY_DOMAIN + ".discover";
 
         IMyIntergridCommunicationSystem _igc;
@@ -27,28 +41,28 @@ namespace IngameScript {
         Dictionary<long, Connection> _connections;
 
         ImmutableDictionary<string, Action<MyIGCMessage>> _defaultActions;
+        ImmutableDictionary<string, IDispatch> _actions;
         Dictionary<long, PendingConnection> _pending = new Dictionary<long, PendingConnection>();
+        Logger _log;
 
         struct PendingConnection {
             public long TicksPending;
             public long Magic;
         }
+        
+        public Sendy(Logger log, IMyIntergridCommunicationSystem IGC, string domain, IDictionary<string, IDispatch> dict) : this(log, IGC, domain, dict.ToImmutableDictionary()) {}
 
-        public Sendy(IMyIntergridCommunicationSystem IGC, string domain) {
+        public Sendy(Logger log, IMyIntergridCommunicationSystem IGC, string domain, ImmutableDictionary<string, IDispatch> dict) {
+            _log = log;
             Domain = domain;
             _igc = IGC;
             RecvProcess = new MethodProcess(Receive, StartReceive);
             _defaultActions = new Dictionary<string, Action<MyIGCMessage>> {
                 {
-                    ESTABLISH,
+                    CONN,
                     (msg) => {
-                        var d = msg.Data as string ?? "";
-                        if(d.Equals(Domain)) {
-                            _igc.SendUnicastMessage(msg.Source, ESTABLISH_CONF, 0);
-                            ConfirmConnection(msg.Source);
-                        } else {
-                            _igc.SendUnicastMessage(msg.Source, ESTABLISH_DENY, "unknown domain"); 
-                        }
+                        _igc.SendUnicastMessage(msg.Source, ESTABLISH_CONF, (long)msg.Data);
+                        ConfirmConnection(msg.Source);
                     }
                 },
                 {
@@ -71,17 +85,28 @@ namespace IngameScript {
                     }
                 }
             }.ToImmutableDictionary();
+            _actions = dict
+                .Add(
+                    PING,
+                    new Dispatch<int>((conn, data) => conn.MissedPings = 0)
+                )
+                .Add(
+                    DROP,
+                    new Dispatch<int>((conn, data) => {
+                        _connections.Remove(conn.Node);
+                    })
+                );
         }
 
         private void ConfirmConnection(long source) {
-            var conn = new Connection(source);
+            var conn = new Connection(this, source);
             _connections.Add(source, conn);
         }
 
         private void BeginEstablish(long addr) {
             var magic = Random.Shared.NextInt64();
             _pending.Add(addr, new PendingConnection { TicksPending = 0, Magic = magic });
-            _igc.SendUnicastMessage(addr, ESTABLISH, magic);
+            _igc.SendUnicastMessage(addr, CONN, magic);
         }
 
         /// <summary>
@@ -112,12 +137,14 @@ namespace IngameScript {
         /// connection
         /// </summary>
         public bool TransmitBroadcast = false;
+
         int _ticksSinceBroadcast = 0;
 
         private IEnumerator<Nil> Periodic() {
             for(;;) {
+                var passedTicks = TicksPerPeriod * 2;
                 if(TransmitBroadcast) {
-                    _ticksSinceBroadcast += TicksPerPeriod;
+                    _ticksSinceBroadcast += passedTicks;
                     if(_ticksSinceBroadcast >= DiscoverPeriod) {
                         _ticksSinceBroadcast = 0;
                         _igc.SendBroadcastMessage(DISCOVER, Domain);
@@ -128,11 +155,29 @@ namespace IngameScript {
                 foreach(var source in _pending.Keys) {
                     var pend = _pending[source];
                     pend.TicksPending += TicksPerPeriod;
-                    if(pend.TicksPending > 500) { toRemove = source; break; }
+                    if(pend.TicksPending >= PendingTimeout) {
+                        toRemove = source;
+                        break;
+                    }
                 }
-                if(toRemove != -1) {
-                    _pending.Remove(toRemove);
+                if(toRemove != -1) _pending.Remove(toRemove);
+
+                yield return Nil._;
+                
+                toRemove = -1;
+                foreach(var conn in _connections.Values) {
+                    conn.TicksSincePing += passedTicks;
+                    if(conn.TicksSincePing >= PingPeriod) {
+                        conn.TicksSincePing = 0;
+                        conn.MissedPings += 1;
+                        if(conn.MissedPings > PendingTimeout) {
+                            toRemove = conn.Node;
+                            break;
+                        }
+                    }
                 }
+
+                if(toRemove != -1) _connections.Remove(toRemove);
 
                 yield return Nil._;
             }
@@ -153,16 +198,46 @@ namespace IngameScript {
         }
 
         private void ProcessMessage(MyIGCMessage msg) {
+            _log.Log($"{msg.Source} -> {msg.Tag} ({msg.Data.ToString()})");
             var first = _defaultActions.GetValueOrDefault(msg.Tag);
             if(first != null) first(msg);
 
             Connection conn;
             if(_connections.TryGetValue(msg.Source, out conn)) {
-                var act = conn.Actions.GetValueOrDefault(msg.Tag);
+                var act = _actions.GetValueOrDefault(msg.Tag);
                 if(act != null && act.Validate(msg.Data)) {
                     act.ExecuteRaw(conn, msg.Data);
                 }
             } 
+        }
+
+        /// <summary>
+        /// A single connection with another programmable block, keeping track of 
+        /// connection status with pings and maintining a dictionary of tags to the actions
+        /// that should be dispatched
+        /// </summary>
+        public class Connection {
+            public readonly long Node;
+            public long MissedPings;
+            public long TicksSincePing;
+            public readonly Sendy Sendy;
+            
+            public void Send<T>(string tag, T data) => Sendy._igc.SendUnicastMessage(Node, tag, data);
+            public void Close() {
+                Send<int>(Sendy.DROP, 0);
+                Sendy._connections.Remove(Node);
+            }
+
+            public Connection(Sendy sendy, long addr) {
+                Node = addr;
+                Sendy = sendy;
+                MissedPings = 0;
+            }
+        }
+
+        public interface IDispatch {
+            bool Validate(object data);
+            void ExecuteRaw(Connection c, object data);
         }
     }
 }
