@@ -17,6 +17,7 @@ using VRage.Game;
 using VRage;
 using VRageMath;
 using System.Collections.Immutable;
+using System.Collections;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
@@ -25,7 +26,7 @@ namespace IngameScript {
         IMyShipController _rc;
         Dictionary<string, Action> _commands = new Dictionary<string, Action>();
 
-        IEnumerator _antennarecv;
+        MethodProcess antennaRecv;
 
         public Program() {
             List<IMyGyro> controlGyros = new List<IMyGyro>();
@@ -50,7 +51,14 @@ namespace IngameScript {
                 
             }
 
-            _log.Log(""+_gyro.Step());
+            _log.Log("" + _gyro.Step());
+        }
+
+        IEnumerator<IProcess.Void> GyroProcess() {
+            try {
+
+            } finally {
+            }
         }
     }
 }

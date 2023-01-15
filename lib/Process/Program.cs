@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 
 namespace IngameScript {
     /// <summary>
@@ -11,7 +12,7 @@ namespace IngameScript {
         /// Empty record type that fills the generic type parameter of <c>IEnumerator</c>
         /// </summary>
         public struct Void {}
-        protected readonly static Void VOID;
+        public readonly static Void VOID;
         protected IEnumerator<Void> _prog;
         public IEnumerator<Void> Progress {
             get { return _prog; }
@@ -61,5 +62,18 @@ namespace IngameScript {
                 return true;
             }
         }
+    }
+    
+    /// <summary>
+    /// An implementation of <c>IProcess</c> that contains a reference to a method
+    /// allowing a process to be easily constructed from a method without boilerplate process API implementation
+    /// </summary>
+    public sealed class MethodProcess: IProcess {
+        Func<IEnumerator<Void>> _func;
+        public MethodProcess(Func<IEnumerator<Void>> func) {
+            _func = func;
+        }
+
+        protected override IEnumerator<Void> Run() => _func();
     }
 }
