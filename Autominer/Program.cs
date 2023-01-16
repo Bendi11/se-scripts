@@ -23,33 +23,33 @@ namespace IngameScript {
                 _ini = new MyIni();
                 MyIniParseResult parseResult;
                 if(!_ini.TryParse(Me.CustomData, out parseResult)) {
-                    _log.Panic($"parse conf. @ line {parseResult.LineNo}");
+                    Log.Panic($"parse conf. @ line {parseResult.LineNo}");
                 }
                 
                 string opMode = _ini.Get("config", "mode").ToString();
                 switch(opMode) {
                     case "sta": _mode = OperatingMode.Station; break;
                     case "dro": _mode = OperatingMode.Drone; break;
-                    default: _log.Panic($"Invalid or missing config.mode key {opMode}"); break;
+                    default: Log.Panic($"Invalid or missing config.mode key {opMode}"); break;
                 }
 
                 if(_mode == OperatingMode.Drone) {
-                    var c = new Drone(_log, _ini, IGC, GridTerminalSystem);
+                    var c = new Drone(_ini, IGC, GridTerminalSystem);
                     _periodic = c.Periodic;
                     _periodic.Begin();
                     _comms = c;
                     Runtime.UpdateFrequency |= UpdateFrequency.Update10;
-                    _log.Log("init drone complete");
+                    Log.Put("init drone complete");
                 } else {
-                    _comms = new Station(_log, _ini, IGC, GridTerminalSystem);
-                    _log.Log("init sta complete");
+                    _comms = new Station(_ini, IGC, GridTerminalSystem);
+                    Log.Put("init sta complete");
                 }
 
                 _comms.Sendy.TicksPerPeriod = 100;
                 _comms.Sendy.RecvProcess.Begin();
                 _comms.Sendy.PeriodicProcess.Begin();
                 Runtime.UpdateFrequency |= UpdateFrequency.Update100;
-            } catch(Exception e) { _log.Panic(e.Message); }
+            } catch(Exception e) { Log.Panic(e.ToString()); } 
         }
 
         public void Save() {
@@ -67,7 +67,7 @@ namespace IngameScript {
                 } else if(updateSource.HasFlag(UpdateType.IGC)) {
                     _comms.Sendy.RecvProcess.Poll();
                 }
-            } catch(Exception e) { _log.Panic(e.Message); }
+            } catch(Exception e) { Log.Panic(e.ToString()); }
         }
     }
 }

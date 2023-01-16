@@ -10,7 +10,6 @@ using VRage.Game.ModAPI.Ingame.Utilities;
 namespace IngameScript {
     class CommsBase {
         public Sendy Sendy;
-        protected Log _log;
         protected readonly byte[] AUTHKEY = new byte[8];
         protected byte[] PARSE_AUTHKEY = new byte[8];
 
@@ -29,15 +28,14 @@ namespace IngameScript {
             ORIENTDONE = DOMAIN + ".or",
             TANKSFULL = REPORT + ".full";
 
-        public CommsBase(Log log, MyIni ini) {
-            _log = log;
+        public CommsBase(MyIni ini) {
             string str;
             if(!ini.Get("auth", "key").TryGetString(out str) || str.Length != 16) {
-                _log.Panic("Config option 'auth.key' is not a string or does not contain exactly 16 chars");
+                Log.Panic("Config option 'auth.key' is not a string or does not contain exactly 16 chars");
             }
             
             if(!TryParseKey(str, AUTHKEY)) {
-                _log.Panic("Failed to parse auth.key hex value");
+                Log.Panic("Failed to parse auth.key hex value");
             }
         }
         
@@ -47,7 +45,7 @@ namespace IngameScript {
         /// <returns>true if parsing succeeded</returns>
         protected bool TryParseKey(string key, byte[] output) {
             if(key.Length != output.Length * 2) {
-                _log.Error($"authkey str len != authkey len");
+                Log.Error($"authkey str len != authkey len");
                 return false;
             }
             
@@ -56,7 +54,7 @@ namespace IngameScript {
                     output[i / 2] = Convert.ToByte(key.Substring(i, 2), 16);
                 }
             } catch(Exception e) {
-                _log.Error($"authkey parse fail {e.Message}");
+                Log.Error($"authkey parse fail {e.Message}");
                 return false;
             }
 
@@ -77,58 +75,89 @@ namespace IngameScript {
         List<IMyShipConnector> _connectors = new List<IMyShipConnector>();
 
         class DroneConn: Sendy.Connection {
+            public IMyShipConnector Assigned = null;
             public DroneConn(Sendy s, long a) : base(s, a) {}
         }
 
-        public Station(Log log, MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(log, ini) {
+        public Station(MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(ini) {
             GTS.GetBlocksOfType(_connectors, conn => MyIni.HasSection(conn.CustomData, "minedock"));
             var dispatch = new Dictionary<string, Sendy.IDispatch>() {
                 {
                     TANKSFULL,
                     new EmptyDispatch<DroneConn>(conn => {
-                        var empty = _connectors.SingleOrDefault(conct => conct.Status == MyShipConnectorStatus.Unconnected);
-                        if(empty != null) {
-                            conn.Send(ORIENT, empty.WorldMatrix.GetOrientation().Backward);
-                        } else {
-                            _log.Warn($"{conn.Node} no dock: connectors full");
+                        if(AssignPort(conn)) {
+                            var mat = conn.Assigned.WorldMatrix;
+                            conn.Send(MOVE, mat.Translation + mat.GetOrientation().Forward * 5);
                         }
                     })
                 },
                 {
                     ORIENTDONE,
                     new EmptyDispatch<DroneConn>(conn => {
+                        if(AssignPort(conn)) {
                         
+                        }
+                    })
+                },
+                {
+                    MOVEDONE,
+                    new EmptyDispatch<DroneConn>(conn => {
+                        if(AssignPort(conn)) {
+                            conn.Send(ORIENT, conn.Assigned.WorldMatrix.GetOrientation().Backward);
+                        }
                     })
                 }
             };
-            Sendy = new Sendy(_log, IGC, DOMAIN, dispatch) {
+            Sendy = new Sendy(IGC, DOMAIN, dispatch) {
                 ListenForBroadcast = true,
+                CreateConnection = (a, b) => new DroneConn(a, b)
             };
+        }
+
+        private bool AssignPort(DroneConn conn) {
+            if(conn.Assigned != null) { return true; }
+            var empty = _connectors.SingleOrDefault(conct => conct.Status == MyShipConnectorStatus.Unconnected);
+            if(empty != null) {
+                conn.Assigned = empty;
+            } else {
+                Log.Warn($"{conn.Node} no dock: connectors full");
+            }
+
+            return conn.Assigned != null;
         }
     }
 
     class Drone: CommsBase {
         GyroController _gyro;
+        Thrust _thrust;
         IMyRemoteControl _rc;
         IMyShipConnector _connector;
         public IProcess Periodic;
-        Sendy.Connection _conn;
-        bool orient;
-        bool move;
+        StationConn _conn;
+        bool _orient;
+
+        bool _move;
+        Vector3D _pos;
 
         class StationConn: Sendy.Connection {
             public StationConn(Sendy s, long a) : base(s, a) {
-                _log.Log($"conn sta @ {conn.Node}");
-                conn.OnDrop = (_) => conn.Sendy.TransmitBroadcast = true;
-                conn.Sendy.TransmitBroadcast = false;
-                _conn = conn;
-                _conn.Send(TANKSFULL);
+                Sendy.TransmitBroadcast = false;
+                Log.Put($"conn sta @ {Node}");
+                Send(TANKSFULL);
+            }
+
+            public override void Close() {
+                Sendy.TransmitBroadcast = true;
+                base.Close();
             }
         }
 
-        public Drone(Log log, MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(log, ini) {
+        public Drone(MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(ini) {
             _rc = GTS.GetBlockWithName("CONTROL") as IMyRemoteControl;
+            _thrust = new Thrust(GTS, _rc);
             _rc.SetAutoPilotEnabled(false);
+            _rc.SetCollisionAvoidance(true);
+            _rc.SpeedLimit = 5;
             _connector = GTS.GetBlockWithName("CONNECTOR") as IMyShipConnector;
             List<IMyGyro> controlGyros = new List<IMyGyro>();
             GTS.GetBlocksOfType(controlGyros);
@@ -148,37 +177,46 @@ namespace IngameScript {
                 }
             };
 
-            Sendy = new Sendy(_log, IGC, DOMAIN, dispatch) {
+            Sendy = new Sendy(IGC, DOMAIN, dispatch) {
                 TransmitBroadcast = true,
-                CreateConnection = (_, addr) => {
-                    var conn = new Sendy.Connection(Sendy, addr);
-                                    },
+                CreateConnection = (s, a) => {
+                    _conn = new StationConn(s, a);
+                    return _conn;
+                }
             };
         }
 
         void MoveTo(Vector3D pos) {
+            _pos = pos;
             _rc.ClearWaypoints();
             _rc.AddWaypoint(pos, "t");
             _rc.SetAutoPilotEnabled(true);
             _rc.SetCollisionAvoidance(true);
-            move = true;
+            _move = true;
         }
 
         void Orient(Vector3D axis) {
             _gyro.Enable();
             _gyro.OrientWorld = axis;
-            orient = true;
+            _orient = true;
         }
 
         private IEnumerator<Nil> RunLoop() {
             for(;;) {
-                if(orient) {
+                if(_orient) {
                     _gyro.Step();
                     if(_gyro.IsOriented) {
-                        orient = false;
+                        _orient = false;
                         _gyro.Disable();
                         _conn.Send(ORIENTDONE);
                     } 
+                }
+
+                if(_move) {
+                    if((_rc.GetPosition() - _pos).Length() < 1) {
+                        _move = false;
+                        _conn.Send(MOVEDONE);
+                    }
                 }
 
                 yield return Nil._;

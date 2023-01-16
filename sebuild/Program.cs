@@ -17,6 +17,9 @@ internal class Program {
 
         [Option('m', "minify", Required=false, HelpText = "Minify the produced output")]
         public bool Minify { get; set; }
+
+        [Option('r', "rename", Required = false, HelpText = "Rename symbols to reduce output size further")]
+        public bool Rename { get; set; }
     }
 
     static async Task Main(string[] args) {
@@ -26,7 +29,7 @@ internal class Program {
                     string projectName = build.Project ?? throw new ArgumentNullException();
                     var ctx = await ScriptWorkspaceContext.Create(build.SolutionPath ?? throw new ArgumentNullException());
 
-                    var syntax = await ctx.BuildProject(projectName, build.Minify);
+                    var syntax = await ctx.BuildProject(projectName, build.Rename);
                     
                     string path;
                     

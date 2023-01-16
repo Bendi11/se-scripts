@@ -121,7 +121,7 @@ namespace IngameScript {
 
                     if(o2_full || depres) {
                         if(o2_full) {
-                            log.Log("O2 tank max: venting air");
+                            log.Put("O2 tank max: venting air");
                         }
                         onVentDepressurize();
                         onVentDepressurize = null;
@@ -189,7 +189,7 @@ namespace IngameScript {
         private void CabinDoorToggle() {
             if(decom_countdown != -1) { return; }
             if(cabin_door.Status != DoorStatus.Closed) {
-                log.Log("cabin door seal");
+                log.Put("cabin door seal");
                 CabinDoorClose();
                 return;
             }
@@ -213,7 +213,7 @@ namespace IngameScript {
             
             if(pressurized && num_crew_in_cabin > 1) {
                 if(!enemy) {
-                    log.Log(">1 crew in cabin - await decom. sequence");
+                    log.Put(">1 crew in cabin - await decom. sequence");
                     decom_light.Enabled = true;
                     decom_light.BlinkIntervalSeconds = 0.5F;
                     decom_countdown = 3;
@@ -240,7 +240,7 @@ namespace IngameScript {
             }
 
             onVentDepressurize = () => {
-                log.Log("green for cabin door egress");
+                log.Put("green for cabin door egress");
                 cabin_door.Enabled = true;
                 cabin_door.OpenDoor();
                 foreach(var vent in vents) { vent.Depressurize = false; }
