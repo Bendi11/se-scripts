@@ -37,19 +37,20 @@ namespace IngameScript {
         
         public Thrust(IMyGridTerminalSystem GTS, IMyShipController _ref) {
             Ref = _ref;
-            Func<Base6Directions.Direction, List<IMyThrust>> fill = (dir) => {
+            Func<Vector3D, List<IMyThrust>> fill = (dir) => {
                 var list = new List<IMyThrust>();
-                GTS.GetBlocksOfType(list, thrust => thrust.Orientation.Forward == dir);
+                GTS.GetBlocksOfType(list, thrust => thrust.WorldMatrix.Backward == dir);
                 return list;
             };
             
             GTS.GetBlocksOfType(_all);
-            _fw = fill(Base6Directions.Direction.Backward);
-            _bw = fill(Base6Directions.Direction.Forward);
-            _right = fill(Base6Directions.Direction.Left);
-            _left = fill(Base6Directions.Direction.Right);
-            _up = fill(Base6Directions.Direction.Down);
-            _down = fill(Base6Directions.Direction.Up);
+            var mat = Ref.WorldMatrix;
+            _fw = fill(mat.Forward);
+            _bw = fill(mat.Backward);
+            _right = fill(mat.Right);
+            _left = fill(mat.Left);
+            _up = fill(mat.Down);
+            _down = fill(mat.Up);
             UpdateMass();
         }
         

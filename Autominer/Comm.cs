@@ -24,8 +24,8 @@ namespace IngameScript {
             HOLD = CMD + ".hold",
 
             REPORT = DOMAIN + ".rep",
-            MOVEDONE = DOMAIN + ".mv",
-            ORIENTDONE = DOMAIN + ".or",
+            MOVEDONE = REPORT + ".mv",
+            ORIENTDONE = REPORT + ".or",
             TANKSFULL = REPORT + ".full";
 
         public CommsBase(MyIni ini) {
@@ -155,9 +155,7 @@ namespace IngameScript {
         public Drone(MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(ini) {
             _rc = GTS.GetBlockWithName("CONTROL") as IMyRemoteControl;
             _ap = new Autopilot(GTS, _rc);
-            _rc.SetAutoPilotEnabled(false);
-            _rc.SetCollisionAvoidance(true);
-            _rc.SpeedLimit = 5;
+            _ap.SpeedLimit = 7F;
             _connector = GTS.GetBlockWithName("CONNECTOR") as IMyShipConnector;
             List<IMyGyro> controlGyros = new List<IMyGyro>();
             GTS.GetBlocksOfType(controlGyros);
@@ -188,7 +186,7 @@ namespace IngameScript {
 
         void MoveTo(Vector3D pos) {
             _pos = pos;
-            _ap.PositionWorld = pos;
+            _ap.PositionWorld = _rc.GetPosition() + Vector3D.Up * 3;
             _ap.Enabled = true;
             _move = true;
         }
@@ -211,6 +209,7 @@ namespace IngameScript {
                 }
 
                 if(_move) {
+                    _ap.Step();
                     if(_rc.GetShipSpeed() < 0.1 && (_rc.GetPosition() - _ap.PositionWorld).Length() < 1) {
                         _move = false;
                         _ap.Enabled = false;

@@ -15,6 +15,7 @@ namespace IngameScript {
         }
 
         public IMyCubeBlock Ref;
+        public double SpeedLimit = 10;
         PID _x, _y, _z;
 
         Thrust _thrust;
@@ -36,7 +37,7 @@ namespace IngameScript {
 
         public void Step() {
             Vector3D error = PositionWorld - Ref.GetPosition();
-            Func<double, double> clamp = (val) => Math.Min(15, Math.Max(val, -15));
+            Func<double, double> clamp = (val) => Math.Min(SpeedLimit, Math.Max(val, -SpeedLimit));
             Vector3D control = new Vector3D(
                 clamp(_x.Step(error.X)),
                 clamp(_y.Step(error.Y)),
