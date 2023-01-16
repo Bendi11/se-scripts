@@ -29,10 +29,22 @@ namespace IngameScript {
             get { return Vector3.TransformNormal(VelLocal, Ref.WorldMatrix); }
             set { VelLocal = Vector3.TransformNormal(value, MatrixD.Transpose(Ref.WorldMatrix)); }
         }
+        
+        bool _enabled = false;
+        public bool Enabled {
+            get { return _enabled; }
+            set {
+                _enabled = value;
+                if(!value) {
+                    foreach(var th in _all) th.ThrustOverride = 0;
+                }
+            }
+        }
 
         public IMyShipController Ref;
         public float Rate = 0.7F;
         float _mass;
+        List<IMyThrust> _all = new List<IMyThrust>();
         List<IMyThrust> _right, _left, _up, _down, _fw, _bw;
         
         public Thrust(IMyGridTerminalSystem GTS, IMyShipController _ref) {
@@ -42,7 +54,8 @@ namespace IngameScript {
                 GTS.GetBlocksOfType(list, thrust => thrust.Orientation.Forward == dir);
                 return list;
             };
-
+            
+            GTS.GetBlocksOfType(_all);
             _fw = fill(Base6Directions.Direction.Forward);
             _bw = fill(Base6Directions.Direction.Backward);
             _right = fill(Base6Directions.Direction.Right);
@@ -66,7 +79,7 @@ namespace IngameScript {
         private void ApplyAccel(List<IMyThrust> list, double accel) {
             foreach(var th in list) {
                 if(accel <= 0) break;
-                th.ThrustOverride = (float)accel;
+                th.ThrustOverride = Math.Max((float)accel, 0.001F);
                 accel -= th.MaxEffectiveThrust;
             }
         }

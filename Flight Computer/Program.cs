@@ -38,8 +38,6 @@ namespace IngameScript {
         PreFlightChecklist checklist;
         IEnumerator<PreFlightChecklist.ShouldRender> checklist_sm = null;
 
-        static Log log;
-
         Dictionary<string, Action> commands = new Dictionary<string, Action>(StringComparer.OrdinalIgnoreCase);
         MyCommandLine cmdline = new MyCommandLine();
 
@@ -51,7 +49,7 @@ namespace IngameScript {
         public static T nnull<T>(T me, string msg = null) {
             msg = msg ?? typeof(T).ToString() + " is null";
             if(me == null) {
-                log.Error(msg);
+                Log.Error(msg);
                 throw new Exception(msg);
             } 
             return me;
@@ -59,14 +57,14 @@ namespace IngameScript {
         public static List<T> nnull<T>(List<T> list, string msg = null) {
             msg = msg ?? typeof(List<T>).ToString() + " is empty";
             if(list.Count == 0) {
-                log.Error(msg);
+                Log.Error(msg);
                 throw new Exception(msg);
             }
             return list;
         }
 
         public Program() {
-            log = new Log(Me.GetSurface(0));
+            Log.Init(Me.GetSurface(0));
             Runtime.UpdateFrequency |= UpdateFrequency.Update100 | UpdateFrequency.Update10;
             cabin_door = nnull(GridTerminalSystem.GetBlockWithName("CABIN DOOR") as IMyDoor);
             cabin_sensor = nnull(GridTerminalSystem.GetBlockWithName("CABIN SENSOR") as IMySensorBlock);
@@ -85,7 +83,7 @@ namespace IngameScript {
             decom_light.BlinkLength = 50F;
             decom_light.Enabled = false;
             
-            checklist = new PreFlightChecklist(log, cockpit, GridTerminalSystem, nnull(cockpit.GetSurface(0)));
+            checklist = new PreFlightChecklist(cockpit, GridTerminalSystem, nnull(cockpit.GetSurface(0)));
 
             commands.Add("cabindoor", CabinDoorToggle);
             commands.Add("preflight", Preflight);
@@ -121,7 +119,7 @@ namespace IngameScript {
 
                     if(o2_full || depres) {
                         if(o2_full) {
-                            log.Put("O2 tank max: venting air");
+                            Log.Put("O2 tank max: venting air");
                         }
                         onVentDepressurize();
                         onVentDepressurize = null;
@@ -135,7 +133,7 @@ namespace IngameScript {
                 if(cmdline.TryParse(argument)) {
                     Dispatch();
                 } else {
-                    log.Error("Failed to parse command " + argument);
+                    Log.Error("Failed to parse command " + argument);
                 }
             }
              
@@ -162,13 +160,13 @@ namespace IngameScript {
         public void Dispatch() {
             string command = cmdline.Argument(0);
             if(command == null) {
-                log.Error("no command");
+                Log.Error("no command");
                 return;
             }
             
             Action action;
             if(!commands.TryGetValue(command, out action) ) {
-                log.Error("undefined command " + command);
+                Log.Error("undefined command " + command);
                 return;
             }
 
@@ -189,7 +187,7 @@ namespace IngameScript {
         private void CabinDoorToggle() {
             if(decom_countdown != -1) { return; }
             if(cabin_door.Status != DoorStatus.Closed) {
-                log.Put("cabin door seal");
+                Log.Put("cabin door seal");
                 CabinDoorClose();
                 return;
             }
@@ -213,7 +211,7 @@ namespace IngameScript {
             
             if(pressurized && num_crew_in_cabin > 1) {
                 if(!enemy) {
-                    log.Put(">1 crew in cabin - await decom. sequence");
+                    Log.Put(">1 crew in cabin - await decom. sequence");
                     decom_light.Enabled = true;
                     decom_light.BlinkIntervalSeconds = 0.5F;
                     decom_countdown = 3;
@@ -226,7 +224,7 @@ namespace IngameScript {
                     }
                     return;
                 } else {
-                    log.Warn("hostiles present in cabin - skip decom. sequence");
+                    Log.Warn("hostiles present in cabin - skip decom. sequence");
                 }
             }
             
@@ -240,7 +238,7 @@ namespace IngameScript {
             }
 
             onVentDepressurize = () => {
-                log.Put("green for cabin door egress");
+                Log.Put("green for cabin door egress");
                 cabin_door.Enabled = true;
                 cabin_door.OpenDoor();
                 foreach(var vent in vents) { vent.Depressurize = false; }
@@ -270,7 +268,6 @@ namespace IngameScript {
             List<IMyLandingGear> gears = new List<IMyLandingGear>();
             IMyShipConnector connector;
             IMyShipController cockpit;
-            Log log;
             
             [Flags]
             enum State {
@@ -288,8 +285,7 @@ namespace IngameScript {
 
             State state = 0;
 
-            public PreFlightChecklist(Log log, IMyShipController cockpit, IMyGridTerminalSystem gridTerminalSystem, IMyTextSurface _screen) {
-                this.log = log;
+            public PreFlightChecklist(IMyShipController cockpit, IMyGridTerminalSystem gridTerminalSystem, IMyTextSurface _screen) {
                 screen = _screen;                
                 screen.Font = "Monospace";
                 screen.FontSize = 0.9F;
