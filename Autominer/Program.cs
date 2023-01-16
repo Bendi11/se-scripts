@@ -11,7 +11,6 @@ namespace IngameScript {
 
     partial class Program: MyGridProgram {        
         OperatingMode _mode;
-        Logger _log;
         MyIni _ini;
 
         IProcess _periodic;
@@ -19,7 +18,7 @@ namespace IngameScript {
 
         public Program() {
             try {
-                _log = new Logger(Me.GetSurface(0));
+                Log.Init(Me.GetSurface(0));
 
                 _ini = new MyIni();
                 MyIniParseResult parseResult;
@@ -37,6 +36,7 @@ namespace IngameScript {
                 if(_mode == OperatingMode.Drone) {
                     var c = new Drone(_log, _ini, IGC, GridTerminalSystem);
                     _periodic = c.Periodic;
+                    _periodic.Begin();
                     _comms = c;
                     Runtime.UpdateFrequency |= UpdateFrequency.Update10;
                     _log.Log("init drone complete");

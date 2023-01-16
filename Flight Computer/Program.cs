@@ -38,7 +38,7 @@ namespace IngameScript {
         PreFlightChecklist checklist;
         IEnumerator<PreFlightChecklist.ShouldRender> checklist_sm = null;
 
-        static Logger log;
+        static Log log;
 
         Dictionary<string, Action> commands = new Dictionary<string, Action>(StringComparer.OrdinalIgnoreCase);
         MyCommandLine cmdline = new MyCommandLine();
@@ -66,7 +66,7 @@ namespace IngameScript {
         }
 
         public Program() {
-            log = new Logger(Me.GetSurface(0));
+            log = new Log(Me.GetSurface(0));
             Runtime.UpdateFrequency |= UpdateFrequency.Update100 | UpdateFrequency.Update10;
             cabin_door = nnull(GridTerminalSystem.GetBlockWithName("CABIN DOOR") as IMyDoor);
             cabin_sensor = nnull(GridTerminalSystem.GetBlockWithName("CABIN SENSOR") as IMySensorBlock);
@@ -270,7 +270,7 @@ namespace IngameScript {
             List<IMyLandingGear> gears = new List<IMyLandingGear>();
             IMyShipConnector connector;
             IMyShipController cockpit;
-            Logger log;
+            Log log;
             
             [Flags]
             enum State {
@@ -288,7 +288,7 @@ namespace IngameScript {
 
             State state = 0;
 
-            public PreFlightChecklist(Logger log, IMyShipController cockpit, IMyGridTerminalSystem gridTerminalSystem, IMyTextSurface _screen) {
+            public PreFlightChecklist(Log log, IMyShipController cockpit, IMyGridTerminalSystem gridTerminalSystem, IMyTextSurface _screen) {
                 this.log = log;
                 screen = _screen;                
                 screen.Font = "Monospace";

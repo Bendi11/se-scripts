@@ -8,14 +8,14 @@ namespace IngameScript {
     /// <summary>
     /// Simple logging facility supporting many screen sizes and automatic text wrapping
     /// </summary>
-    public class Logger {
-        IMyTextSurface terminal;
-        int msg_count = 0;
-        Vector2 BOUNDS;
+    public static class Log {
+        static IMyTextSurface terminal;
+        static int msg_count = 0;
+        static Vector2 BOUNDS;
 
-        public Logger(IMyTextSurface terminal) {
+        public static void Init(IMyTextSurface term) {
             terminal.WriteText("", false);
-            this.terminal = terminal;
+            terminal = term;
             terminal.BackgroundColor = Color.Black;
             terminal.ContentType = ContentType.TEXT_AND_IMAGE;
             terminal.Font = "Monospace";
@@ -31,15 +31,15 @@ namespace IngameScript {
         /// <summary>
         /// Display a given panic message on the terminal and throw an exception with the message
         /// </summary>
-        public void Panic(string msg) {
+        public static void Panic(string msg) {
             Log("[FTL]" + msg);
             throw new Exception(msg);
         }
 
-        public void Error(string msg) { Log("[ERR]" + msg); }
-        public void Warn(string msg) { Log("[WRN]" + msg); }
+        public static void Error(string msg) { Log("[ERR]" + msg); }
+        public static void Warn(string msg) { Log("[WRN]" + msg); }
 
-        public void Log(string msg) {
+        public static void Log(string msg) {
             if(msg_count >= BOUNDS.Y) {
                 terminal.WriteText("", false);
                 msg_count = 0;

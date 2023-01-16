@@ -10,7 +10,7 @@ using VRage.Game.ModAPI.Ingame.Utilities;
 namespace IngameScript {
     class CommsBase {
         public Sendy Sendy;
-        protected Logger _log;
+        protected Log _log;
         protected readonly byte[] AUTHKEY = new byte[8];
         protected byte[] PARSE_AUTHKEY = new byte[8];
 
@@ -29,7 +29,7 @@ namespace IngameScript {
             ORIENTDONE = DOMAIN + ".or",
             TANKSFULL = REPORT + ".full";
 
-        public CommsBase(Logger log, MyIni ini) {
+        public CommsBase(Log log, MyIni ini) {
             _log = log;
             string str;
             if(!ini.Get("auth", "key").TryGetString(out str) || str.Length != 16) {
@@ -76,15 +76,19 @@ namespace IngameScript {
     class Station: CommsBase {
         List<IMyShipConnector> _connectors = new List<IMyShipConnector>();
 
-        public Station(Logger log, MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(log, ini) {
+        class DroneConn: Sendy.Connection {
+            public DroneConn(Sendy s, long a) : base(s, a) {}
+        }
+
+        public Station(Log log, MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(log, ini) {
             GTS.GetBlocksOfType(_connectors, conn => MyIni.HasSection(conn.CustomData, "minedock"));
             var dispatch = new Dictionary<string, Sendy.IDispatch>() {
                 {
                     TANKSFULL,
-                    new EmptyDispatch(conn => {
+                    new EmptyDispatch<DroneConn>(conn => {
                         var empty = _connectors.SingleOrDefault(conct => conct.Status == MyShipConnectorStatus.Unconnected);
                         if(empty != null) {
-                            conn.Send(ORIENT, empty.WorldMatrix.Forward);
+                            conn.Send(ORIENT, empty.WorldMatrix.GetOrientation().Backward);
                         } else {
                             _log.Warn($"{conn.Node} no dock: connectors full");
                         }
@@ -92,7 +96,7 @@ namespace IngameScript {
                 },
                 {
                     ORIENTDONE,
-                    new EmptyDispatch(conn => {
+                    new EmptyDispatch<DroneConn>(conn => {
                         
                     })
                 }
@@ -112,13 +116,25 @@ namespace IngameScript {
         bool orient;
         bool move;
 
-        public Drone(Logger log, MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(log, ini) {
+        class StationConn: Sendy.Connection {
+            public StationConn(Sendy s, long a) : base(s, a) {
+                _log.Log($"conn sta @ {conn.Node}");
+                conn.OnDrop = (_) => conn.Sendy.TransmitBroadcast = true;
+                conn.Sendy.TransmitBroadcast = false;
+                _conn = conn;
+                _conn.Send(TANKSFULL);
+            }
+        }
+
+        public Drone(Log log, MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(log, ini) {
             _rc = GTS.GetBlockWithName("CONTROL") as IMyRemoteControl;
             _rc.SetAutoPilotEnabled(false);
             _connector = GTS.GetBlockWithName("CONNECTOR") as IMyShipConnector;
             List<IMyGyro> controlGyros = new List<IMyGyro>();
             GTS.GetBlocksOfType(controlGyros);
             _gyro = new GyroController(controlGyros, _connector);
+            _gyro.OrientedThreshold = 0.01F;
+            _gyro.Rate = 0.3F;
             Periodic = new MethodProcess(RunLoop);
 
             var dispatch = new Dictionary<string, Sendy.IDispatch>() {
@@ -134,13 +150,9 @@ namespace IngameScript {
 
             Sendy = new Sendy(_log, IGC, DOMAIN, dispatch) {
                 TransmitBroadcast = true,
-                OnConnection = (conn) => {
-                    _log.Log($"conn sta @ {conn.Node}");
-                    conn.OnDrop = (_) => conn.Sendy.TransmitBroadcast = true;
-                    conn.Sendy.TransmitBroadcast = false;
-                    _conn = conn;
-                    _conn.Send(TANKSFULL);
-                },
+                CreateConnection = (_, addr) => {
+                    var conn = new Sendy.Connection(Sendy, addr);
+                                    },
             };
         }
 
@@ -168,6 +180,7 @@ namespace IngameScript {
                         _conn.Send(ORIENTDONE);
                     } 
                 }
+
                 yield return Nil._;
             }
         }

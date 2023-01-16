@@ -4,20 +4,24 @@ using System;
 using System.Collections.Immutable;
 
 namespace IngameScript {
-    public class Dispatch<T>: Sendy.IDispatch {
-        Action<Sendy.Connection, T> _f;
+    public class Dispatch<T, C>: Sendy.IDispatch where C: Sendy.Connection {
+        Action<C, T> _f;
 
-        public Dispatch(Action<Sendy.Connection, T> f) {
+        public Dispatch(Action<C, T> f) {
             _f = f;
         }
 
         public bool Validate(object d) => d is T; 
-        public void ExecuteRaw(Sendy.Connection c, object d) => _f(c, (T)d);
+        public void ExecuteRaw(Sendy.Connection c, object d) => _f((C)c, (T)d);
     }
 
-    public class EmptyDispatch: Dispatch<int> {
-        public EmptyDispatch(Action<Sendy.Connection> f) : base((conn, _) => f(conn)) {}
+    public class Dispatch<T>: Dispatch<T, Sendy.Connection> { public Dispatch(Action<Sendy.Connection, T> f) : base(f) {} }
+
+    public class EmptyDispatch<Conn>: Dispatch<int, Conn> where Conn: Sendy.Connection {
+        public EmptyDispatch(Action<Conn> f) : base((conn, _) => f(conn)) {}
     }
+
+    public class EmptyDispatch: EmptyDispatch<Sendy.Connection> { public EmptyDispatch(Action<Sendy.Connection> f) : base(f) {} }
 
     /// <summary>
     /// General purpose unicast communications protocol with boilerplate
@@ -32,7 +36,7 @@ namespace IngameScript {
         public int DiscoverPeriod = 500;
         public int PendingTimeout = 500;
         public int PingsBeforeDrop = 2;
-        public Action<Connection> OnConnection;
+        public Func<Sendy, long, Connection> CreateConnection = (me, addr) => new Connection(me, addr);
 
         public const string 
             SENDY_DOMAIN = "sendy",
@@ -50,15 +54,15 @@ namespace IngameScript {
         ImmutableDictionary<string, Action<MyIGCMessage>> _defaultActions;
         ImmutableDictionary<string, IDispatch> _actions;
         PendingConnection _pending;
-        Logger _log;
+        Log _log;
 
         struct PendingConnection {
             public long TicksPending, Node;
         }
         
-        public Sendy(Logger log, IMyIntergridCommunicationSystem IGC, string domain, IDictionary<string, IDispatch> dict) : this(log, IGC, domain, dict.ToImmutableDictionary()) {}
+        public Sendy(Log log, IMyIntergridCommunicationSystem IGC, string domain, IDictionary<string, IDispatch> dict) : this(log, IGC, domain, dict.ToImmutableDictionary()) {}
 
-        public Sendy(Logger log, IMyIntergridCommunicationSystem IGC, string domain, ImmutableDictionary<string, IDispatch> dict) {
+        public Sendy(Log log, IMyIntergridCommunicationSystem IGC, string domain, ImmutableDictionary<string, IDispatch> dict) {
             _log = log;
             Domain = domain;
             _igc = IGC;
@@ -98,18 +102,17 @@ namespace IngameScript {
             _actions = dict
                 .Add(
                     PING,
-                    new EmptyDispatch(conn => conn.MissedPings = 0)
+                    new EmptyDispatch<Connection>(conn => conn.MissedPings = 0)
                 )
                 .Add(
                     DROP,
-                    new EmptyDispatch(conn => conn.Close())
+                    new EmptyDispatch<Connection>(conn => conn.Close())
                 );
         }
 
         private void ConfirmConnection(long source) {
-            var conn = new Connection(this, source);
+            var conn = CreateConnection(this, source);
             _connections.Add(source, conn);
-            if(OnConnection != null) OnConnection(conn);
         }
 
         private void BeginEstablish(long addr, bool force) {
@@ -229,13 +232,11 @@ namespace IngameScript {
             public readonly long Node;
             public long MissedPings, TicksSincePing;
             public readonly Sendy Sendy;
-            public Action<Connection> OnDrop;
             
             public void Send<T>(string tag, T data) => Sendy._igc.SendUnicastMessage(Node, tag, data);
-            public void Send(string tag) => Sendy._igc.SendUnicastMessage<int>(Node, tag, 0);
+            public void Send(string tag) => Send<int>(tag, 0);
 
-            public void Close() {
-                if(OnDrop != null) OnDrop(this);
+            public virtual void Close() {
                 Send<int>(Sendy.DROP, 0);
                 Sendy._connections.Remove(Node);
             }

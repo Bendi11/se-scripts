@@ -18,7 +18,8 @@ namespace IngameScript {
         Vector3 _localAlign;
         float _ang = 0F;
         public float Rate = 0.2F;
-        public bool IsOriented { get { return Math.Abs(_ang) < 0.0001; } }
+        public float OrientedThreshold = 0.0001F;
+        public bool IsOriented { get { return Math.Abs(_ang) < OrientedThreshold; } }
         
         /// <summary>
         /// Create a new <c>GyroController</c> from a list of controlled <c>IMyGyro</c> blocks and a reference vector
