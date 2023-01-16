@@ -129,7 +129,7 @@ namespace IngameScript {
 
     class Drone: CommsBase {
         GyroController _gyro;
-        Thrust _thrust;
+        Autopilot _ap;
         IMyRemoteControl _rc;
         IMyShipConnector _connector;
         public IProcess Periodic;
@@ -154,7 +154,7 @@ namespace IngameScript {
 
         public Drone(MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(ini) {
             _rc = GTS.GetBlockWithName("CONTROL") as IMyRemoteControl;
-            _thrust = new Thrust(GTS, _rc);
+            _ap = new Autopilot(GTS, _rc);
             _rc.SetAutoPilotEnabled(false);
             _rc.SetCollisionAvoidance(true);
             _rc.SpeedLimit = 5;
@@ -188,10 +188,8 @@ namespace IngameScript {
 
         void MoveTo(Vector3D pos) {
             _pos = pos;
-            _rc.ClearWaypoints();
-            _rc.AddWaypoint(pos, "t");
-            _rc.SetAutoPilotEnabled(true);
-            _rc.SetCollisionAvoidance(true);
+            _ap.PositionWorld = pos;
+            _ap.Enabled = true;
             _move = true;
         }
 
@@ -213,8 +211,9 @@ namespace IngameScript {
                 }
 
                 if(_move) {
-                    if((_rc.GetPosition() - _pos).Length() < 1) {
+                    if(_rc.GetShipSpeed() < 0.1 && (_rc.GetPosition() - _ap.PositionWorld).Length() < 1) {
                         _move = false;
+                        _ap.Enabled = false;
                         _conn.Send(MOVEDONE);
                     }
                 }

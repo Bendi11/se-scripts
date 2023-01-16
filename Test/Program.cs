@@ -3,14 +3,13 @@ using VRageMath;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-        Thrust _au;
+        Autopilot _au;
          
         public Program() {
             var cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
-            _au = new Thrust(GridTerminalSystem, cockpit) { prog = this };
+            _au = new Autopilot(GridTerminalSystem, cockpit);
             _au.Enabled = false;
-            _au.VelLocal = Vector3.Zero;
-            //_au.PositionWorld = cockpit.GetPosition();
+            _au.PositionWorld = cockpit.GetPosition() + Vector3D.Up * 10;
             Runtime.UpdateFrequency |= UpdateFrequency.Update10;
         }
 

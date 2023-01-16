@@ -23,6 +23,8 @@ namespace IngameScript {
                 _enabled = value;
                 if(!value) {
                     foreach(var th in _all) th.ThrustOverride = 0;
+                } else {
+                    UpdateMass();
                 }
             }
         }

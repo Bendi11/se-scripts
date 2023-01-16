@@ -1,6 +1,7 @@
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.ModAPI.Ingame;
 using VRageMath;
+using System;
 
 namespace IngameScript {
     /// <summary>
@@ -26,21 +27,22 @@ namespace IngameScript {
         public Autopilot(IMyGridTerminalSystem GTS, IMyShipController _ref) {
             _thrust = new Thrust(GTS, _ref);
             Ref = _ref;
-            _x = new PID(1, 0, 0);
-            _y = new PID(1, 0, 0);
-            _z = new PID(1, 0, 0);
+            _x = new PID(0.2, 0, 0);
+            _y = new PID(0.2, 0, 0);
+            _z = new PID(0.2, 0, 0);
         }
 
         public void UpdateMass() => _thrust.UpdateMass();
 
         public void Step() {
             Vector3D error = PositionWorld - Ref.GetPosition();
+            Func<double, double> clamp = (val) => Math.Min(15, Math.Max(val, -15));
             Vector3D control = new Vector3D(
-                _x.Step(error.X),
-                _y.Step(error.Y),
-                _z.Step(error.Z)
+                clamp(_x.Step(error.X)),
+                clamp(_y.Step(error.Y)),
+                clamp(_z.Step(error.Z))
             );
-            _thrust.VelWorld = -control;
+            _thrust.VelWorld = control;
             _thrust.Step();
         }
     }
