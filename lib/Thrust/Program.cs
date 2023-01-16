@@ -1,22 +1,7 @@
-using Sandbox.Game.EntityComponents;
 using Sandbox.ModAPI.Ingame;
-using Sandbox.ModAPI.Interfaces;
-using SpaceEngineers.Game.ModAPI.Ingame;
 using System.Collections.Generic;
-using System.Collections;
-using System.Linq;
-using System.Text;
 using System;
-using VRage.Collections;
-using VRage.Game.Components;
-using VRage.Game.GUI.TextPanel;
-using VRage.Game.ModAPI.Ingame.Utilities;
-using VRage.Game.ModAPI.Ingame;
-using VRage.Game.ObjectBuilders.Definitions;
-using VRage.Game;
-using VRage;
 using VRageMath;
-using System.Collections.Immutable;
 
 namespace IngameScript {
     /// <summary>
@@ -24,8 +9,9 @@ namespace IngameScript {
     /// set a ship's velocity vector
     /// </summary>
     public class Thrust {
+        public MyGridProgram prog;
         public Vector3 VelLocal;
-        public Vector3 VelGlobal {
+        public Vector3 VelWorld {
             get { return Vector3.TransformNormal(VelLocal, Ref.WorldMatrix); }
             set { VelLocal = Vector3.TransformNormal(value, MatrixD.Transpose(Ref.WorldMatrix)); }
         }
@@ -56,29 +42,30 @@ namespace IngameScript {
             };
             
             GTS.GetBlocksOfType(_all);
-            _fw = fill(Base6Directions.Direction.Forward);
-            _bw = fill(Base6Directions.Direction.Backward);
-            _right = fill(Base6Directions.Direction.Right);
-            _left = fill(Base6Directions.Direction.Left);
-            _up = fill(Base6Directions.Direction.Up);
-            _down = fill(Base6Directions.Direction.Down);
+            _fw = fill(Base6Directions.Direction.Backward);
+            _bw = fill(Base6Directions.Direction.Forward);
+            _right = fill(Base6Directions.Direction.Left);
+            _left = fill(Base6Directions.Direction.Right);
+            _up = fill(Base6Directions.Direction.Down);
+            _down = fill(Base6Directions.Direction.Up);
+            UpdateMass();
         }
         
         public void UpdateMass() => _mass = Ref.CalculateShipMass().TotalMass;
 
         public void Step() {
-            var force = (VelLocal - Ref.GetShipVelocities().LinearVelocity) / _mass * Rate;
-            ApplyAccel(_right, force.Y); 
-            ApplyAccel(_left, -force.Y);
-            ApplyAccel(_up, force.Z);
-            ApplyAccel(_down, -force.Z);
-            ApplyAccel(_bw, force.X);
-            ApplyAccel(_fw, -force.X);
+            if(!_enabled) return;
+            var force = (VelLocal - Vector3D.TransformNormal(Ref.GetShipVelocities().LinearVelocity, MatrixD.Transpose(Ref.WorldMatrix))) * _mass * Rate;
+            ApplyAccel(_right, force.X); 
+            ApplyAccel(_left, -force.X);
+            ApplyAccel(_up, force.Y);
+            ApplyAccel(_down, -force.Y);
+            ApplyAccel(_bw, force.Z);
+            ApplyAccel(_fw, -force.Z);
         }
 
         private void ApplyAccel(List<IMyThrust> list, double accel) {
             foreach(var th in list) {
-                if(accel <= 0) break;
                 th.ThrustOverride = Math.Max((float)accel, 0.001F);
                 accel -= th.MaxEffectiveThrust;
             }
