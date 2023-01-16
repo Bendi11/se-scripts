@@ -13,9 +13,6 @@ namespace IngameScript {
         OperatingMode _mode;
         Logger _log;
         MyIni _ini;
-        GyroController _gyro;
-        IMyShipController _rc;
-        Dictionary<string, Action> _commands = new Dictionary<string, Action>();
 
         MethodProcess _gyroAlign;
         CommsBase _comms;
@@ -37,12 +34,7 @@ namespace IngameScript {
             }
 
             if(_mode == OperatingMode.Drone) {
-                _rc = GridTerminalSystem.GetBlockWithName("CONTROL") as IMyShipController;
-                List<IMyGyro> controlGyros = new List<IMyGyro>();
-                GridTerminalSystem.GetBlocksOfType(controlGyros);
-                _gyro = new GyroController(controlGyros, _rc);
-                _gyroAlign = new MethodProcess(GyroProcess);
-                _comms = new Drone(_log, _ini, IGC);
+                                _comms = new Drone(_log, _ini, IGC);
                 _log.Log("init drone complete");
             } else {
                 _comms = new Station(_log, _ini, IGC);
@@ -71,18 +63,6 @@ namespace IngameScript {
                 
             } else if(updateSource.HasFlag(UpdateType.IGC)) {
                 _comms.Sendy.RecvProcess.Poll();
-            }
-        }
-
-        IEnumerator<Nil> GyroProcess() {
-            try {
-                _gyro.Enable();
-                for(;;) {
-                    _gyro.Step();
-                    yield return Nil._;
-                }
-            } finally {
-                _gyro.Disable();
             }
         }
     }

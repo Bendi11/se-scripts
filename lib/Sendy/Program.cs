@@ -6,11 +6,17 @@ using System.Collections.Immutable;
 namespace IngameScript {
     public class Dispatch<T>: Sendy.IDispatch {
         Action<Sendy.Connection, T> _f;
+
         public Dispatch(Action<Sendy.Connection, T> f) {
             _f = f;
         }
+
         public bool Validate(object d) => d is T; 
         public void ExecuteRaw(Sendy.Connection c, object d) => _f(c, (T)d);
+    }
+
+    public class EmptyDispatch: Dispatch<int> {
+        public EmptyDispatch(Action<Sendy.Connection> f) : base((conn, _) => f(conn)) {}
     }
 
     /// <summary>
@@ -92,11 +98,11 @@ namespace IngameScript {
             _actions = dict
                 .Add(
                     PING,
-                    new Dispatch<int>((conn, data) => conn.MissedPings = 0)
+                    new EmptyDispatch(conn => conn.MissedPings = 0)
                 )
                 .Add(
                     DROP,
-                    new Dispatch<int>((conn, _) => conn.Close())
+                    new EmptyDispatch(conn => conn.Close())
                 );
         }
 
@@ -226,6 +232,8 @@ namespace IngameScript {
             public Action<Connection> OnDrop;
             
             public void Send<T>(string tag, T data) => Sendy._igc.SendUnicastMessage(Node, tag, data);
+            public void Send(string tag) => Sendy._igc.SendUnicastMessage<int>(Node, tag, 0);
+
             public void Close() {
                 if(OnDrop != null) OnDrop(this);
                 Send<int>(Sendy.DROP, 0);
