@@ -28,10 +28,10 @@ namespace IngameScript {
         public string Domain;
 
         public int TicksPerPeriod = 10;
-        public int PingPeriod = 750;
+        public int PingPeriod = 500;
         public int DiscoverPeriod = 500;
         public int PendingTimeout = 500;
-        public int PingsBeforeDrop = 5;
+        public int PingsBeforeDrop = 2;
         public Action<Connection> OnConnection;
 
         public const string 
@@ -207,7 +207,7 @@ namespace IngameScript {
         }
 
         private void ProcessMessage(MyIGCMessage msg) {
-            _log.Log($"{msg.Source} -> {msg.Tag} ({msg.Data.ToString()})");
+            _log.Log($"{msg.Source} -> {msg.Tag} ({msg.Data})");
             var first = _defaultActions.GetValueOrDefault(msg.Tag);
             if(first != null) { first(msg); return; }
 

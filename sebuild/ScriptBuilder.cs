@@ -183,7 +183,7 @@ public class ScriptWorkspaceContext: IDisposable {
                 
                 var letters = Range(0x41, 0x5A)
                     .Concat(Range(0x61, 0x7A))
-                    .Concat(Range(0xC0, 0xFF))
+                    .Concat(Range(0xC0, 0xF6))
                     .Concat(Range(0x100, 0x17F))
                     .Concat(Range(0x180, 0x1BF))
                     .Concat(Range(0x1C4, 0x1CC))

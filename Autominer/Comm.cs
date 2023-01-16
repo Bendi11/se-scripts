@@ -18,10 +18,15 @@ namespace IngameScript {
             DOMAIN = "fzy.am",
 
             CMD = DOMAIN + ".cmd",
-            // MyTuple<Vector3, Vector3>: pos, world orient
-            RETURN = CMD + ".ret",
+            // Vector3D pos
+            MOVE = CMD + ".mv",
+            // Vector3D orient
+            ORIENT = CMD + ".or",
             HOLD = CMD + ".hold",
-            REPORT = DOMAIN + "rep",
+
+            REPORT = DOMAIN + ".rep",
+            MOVEDONE = DOMAIN + ".mv",
+            ORIENTDONE = DOMAIN + ".or",
             TANKSFULL = REPORT + ".full";
 
         public CommsBase(Logger log, MyIni ini) {
@@ -69,20 +74,31 @@ namespace IngameScript {
     }
 
     class Station: CommsBase {
-        List<IMyShipConnector> _connectors;
+        List<IMyShipConnector> _connectors = new List<IMyShipConnector>();
 
         public Station(Logger log, MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(log, ini) {
             GTS.GetBlocksOfType(_connectors, conn => MyIni.HasSection(conn.CustomData, "minedock"));
             var dispatch = new Dictionary<string, Sendy.IDispatch>() {
                 {
                     TANKSFULL,
-                    new Dispatch<int>((conn, _) => {
+                    new EmptyDispatch(conn => {
+                        var empty = _connectors.SingleOrDefault(conct => conct.Status == MyShipConnectorStatus.Unconnected);
+                        if(empty != null) {
+                            conn.Send(ORIENT, empty.WorldMatrix.Forward);
+                        } else {
+                            _log.Warn($"{conn.Node} no dock: connectors full");
+                        }
+                    })
+                },
+                {
+                    ORIENTDONE,
+                    new EmptyDispatch(conn => {
                         
                     })
                 }
             };
             Sendy = new Sendy(_log, IGC, DOMAIN, dispatch) {
-                ListenForBroadcast = true
+                ListenForBroadcast = true,
             };
         }
     }
@@ -90,36 +106,68 @@ namespace IngameScript {
     class Drone: CommsBase {
         GyroController _gyro;
         IMyRemoteControl _rc;
+        IMyShipConnector _connector;
         public IProcess Periodic;
+        Sendy.Connection _conn;
+        bool orient;
+        bool move;
 
         public Drone(Logger log, MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(log, ini) {
             _rc = GTS.GetBlockWithName("CONTROL") as IMyRemoteControl;
+            _rc.SetAutoPilotEnabled(false);
+            _connector = GTS.GetBlockWithName("CONNECTOR") as IMyShipConnector;
             List<IMyGyro> controlGyros = new List<IMyGyro>();
             GTS.GetBlocksOfType(controlGyros);
-            _gyro = new GyroController(controlGyros, _rc);
-            Periodic = new MethodProcess(OrientProcess, () => _gyro.Enable(), () => _gyro.Disable());
+            _gyro = new GyroController(controlGyros, _connector);
+            Periodic = new MethodProcess(RunLoop);
 
             var dispatch = new Dictionary<string, Sendy.IDispatch>() {
                 {
-                    RETURN,
-                    new Dispatch<MyTuple<Vector3, Vector3>>((conn, data) => {
-                         
-                    })
+                    MOVE,
+                    new Dispatch<Vector3D>((conn, data) => MoveTo(data))
+                },
+                {
+                    ORIENT,
+                    new Dispatch<Vector3D>((conn, data) => Orient(data))
                 }
             };
+
             Sendy = new Sendy(_log, IGC, DOMAIN, dispatch) {
                 TransmitBroadcast = true,
                 OnConnection = (conn) => {
                     _log.Log($"conn sta @ {conn.Node}");
                     conn.OnDrop = (_) => conn.Sendy.TransmitBroadcast = true;
                     conn.Sendy.TransmitBroadcast = false;
+                    _conn = conn;
+                    _conn.Send(TANKSFULL);
                 },
             };
         }
 
-        private IEnumerator<Nil> OrientProcess() {
+        void MoveTo(Vector3D pos) {
+            _rc.ClearWaypoints();
+            _rc.AddWaypoint(pos, "t");
+            _rc.SetAutoPilotEnabled(true);
+            _rc.SetCollisionAvoidance(true);
+            move = true;
+        }
+
+        void Orient(Vector3D axis) {
+            _gyro.Enable();
+            _gyro.OrientWorld = axis;
+            orient = true;
+        }
+
+        private IEnumerator<Nil> RunLoop() {
             for(;;) {
-                _gyro.Step();
+                if(orient) {
+                    _gyro.Step();
+                    if(_gyro.IsOriented) {
+                        orient = false;
+                        _gyro.Disable();
+                        _conn.Send(ORIENTDONE);
+                    } 
+                }
                 yield return Nil._;
             }
         }
