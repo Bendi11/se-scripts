@@ -18,16 +18,13 @@ namespace IngameScript {
 
             CMD = DOMAIN + ".cmd",
             // Vector3D pos
-            MOVE = CMD + ".mv",
+            STAGEDOCK = CMD + ".mv",
             // Vector3D orient
-            ORIENT = CMD + ".or",
+            ORIENTDOCK = CMD + ".or",
             DOCK = CMD + ".dock",
             HOLD = CMD + ".hold",
 
-            REPORT = DOMAIN + ".rep",
-            MOVEDONE = REPORT + ".mv",
-            ORIENTDONE = REPORT + ".or",
-            TANKSFULL = REPORT + ".full";
+            REPORT = DOMAIN + ".rep"; 
 
         public CommsBase(MyIni ini) {
             string str;
@@ -70,12 +67,23 @@ namespace IngameScript {
                 output[i] ^= 0x3E;
             }
         }
+
+        [Flags]
+        protected enum State {
+            Unknown = 1,
+            Transitioning = 2,
+            Docked = 4,
+            StageDock = 8,
+            OrientedDock = 16,
+            Hold = 32
+        }
     }
 
     class Station: CommsBase {
         List<IMyShipConnector> _connectors = new List<IMyShipConnector>();
 
         class DroneConn: Sendy.Connection {
+            public State ReportedState = State.Unknown;
             public IMyShipConnector Assigned = null;
             public DroneConn(Sendy s, long a) : base(s, a) {}
         }
@@ -84,27 +92,22 @@ namespace IngameScript {
             GTS.GetBlocksOfType(_connectors, conn => MyIni.HasSection(conn.CustomData, "minedock"));
             var dispatch = new Dictionary<string, Sendy.IDispatch>() {
                 {
-                    TANKSFULL,
-                    new EmptyDispatch<DroneConn>(conn => {
-                        if(AssignPort(conn)) {
-                            var mat = conn.Assigned.WorldMatrix;
-                            conn.Send(MOVE, mat.Translation + mat.GetOrientation().Forward * 25);
-                        }
-                    })
-                },
-                {
-                    ORIENTDONE,
-                    new EmptyDispatch<DroneConn>(conn => {
-                        if(AssignPort(conn)) {
-                            conn.Send(DOCK, conn.Assigned.GetPosition() + conn.Assigned.WorldMatrix.Forward);
-                        }
-                    })
-                },
-                {
-                    MOVEDONE,
-                    new EmptyDispatch<DroneConn>(conn => {
-                        if(AssignPort(conn)) {
-                            conn.Send(ORIENT, conn.Assigned.WorldMatrix.GetOrientation().Backward);
+                    REPORT,
+                    new Dispatch<string, DroneConn>((conn, str) => {
+                        try {
+                            conn.ReportedState = (State)Enum.Parse(typeof(State), str);
+                            switch(conn.ReportedState) {
+                                case State.Unknown: 
+                                    if(AssignPort(conn)) {
+                                        var mat = conn.Assigned.WorldMatrix;
+                                        conn.Send(STAGEDOCK, mat.Translation + mat.Forward * 25);
+                                    }
+                                break;
+                                case State.OrientedDock: conn.Send(DOCK, conn.Assigned.GetPosition()); break;
+                                case State.StageDock: conn.Send(ORIENTDOCK, conn.Assigned.WorldMatrix.GetOrientation().Backward); break;
+                            } 
+                        } catch(Exception e) {
+                            Log.Error($"Failed to parse reported state: {e.Message}");
                         }
                     })
                 }
@@ -137,21 +140,34 @@ namespace IngameScript {
         StationConn _conn;
         bool _orient;
 
-        bool _move;
-        bool _connect;
-        Vector3D _pos;
+        Process _proc;
+
+        State _state = State.Unknown;
+
+        bool Valid(State flags) {
+            if(_proc != null || (_state & flags) != 0) {
+                return true;
+            } else {
+                Log.Error($"Invalid command for current state");
+                _state = State.Unknown;
+                return false;
+            }
+        }
 
         class StationConn: Sendy.Connection {
             public StationConn(Sendy s, long a) : base(s, a) {
                 Sendy.TransmitBroadcast = false;
                 Log.Put($"conn sta @ {Node}");
-                Send(TANKSFULL);
             }
 
             public override void Close() {
                 Sendy.TransmitBroadcast = true;
                 base.Close();
             }
+        }
+
+        void Report() {
+            _conn.Send(REPORT, Enum.GetName(typeof(State), _state));
         }
 
         public Drone(MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(ini) {
@@ -168,19 +184,18 @@ namespace IngameScript {
 
             var dispatch = new Dictionary<string, Sendy.IDispatch>() {
                 {
-                    MOVE,
-                    new Dispatch<Vector3D>((conn, data) => MoveTo(data))
+                    STAGEDOCK,
+                    new Dispatch<Vector3D>((conn, data) => { if(Valid(State.Unknown | State.Hold)) { StageDock(data); }})
                 },
                 {
-                    ORIENT,
-                    new Dispatch<Vector3D>((conn, data) => Orient(data))
+                    ORIENTDOCK,
+                    new Dispatch<Vector3D>((conn, data) => { if(Valid(State.StageDock)) { Orient(data); }})
                 },
                 {
                     DOCK,
                     new Dispatch<Vector3D>((conn, data) => {
-                        _ap.Ref = _connector;
-                        MoveTo(data);
-                        _connect = true;
+                        if(!Valid(State.OrientedDock)) { return; }
+                        Connect(data); 
                     })
                 }
             };
@@ -194,50 +209,73 @@ namespace IngameScript {
             };
         }
 
-        void MoveTo(Vector3D pos) {
-            _pos = pos;
+        IEnumerator<Nil> MoveTo(Vector3D pos) {
             _ap.PositionWorld = pos;
             _ap.Enabled = true;
-            _move = true;
+
+            try {
+                while(_rc.GetShipSpeed() < 0.1 && (_rc.GetPosition() - _ap.PositionWorld).Length() < 0.5) {
+                    _ap.Step();
+                    yield return Nil._;
+                }
+            } finally {
+                _ap.Enabled = false;
+            }
         }
 
-        void Orient(Vector3D axis) {
+        IEnumerator<Nil> StageDock(Vector3D pos) {
+            foreach(var _ in new MethodProcess(() => MoveTo(pos))) { yield return Nil._; }
+            _state = State.StageDock;
+        }
+
+        IEnumerator<Nil> Orient(Vector3D axis) {
             _gyro.Enable();
             _gyro.OrientWorld = axis;
-            _orient = true;
+            
+            try {
+                while(!_gyro.IsOriented) {
+                    _gyro.Step();
+                    yield return Nil._;
+                }
+                _state = State.OrientedDock;
+            } finally {
+                _orient = false;
+                _gyro.Disable();
+                _orient = true;
+            }
+        }
+
+        IEnumerator<Nil> Connect(Vector3D pos) {
+            var mv = new MethodProcess(() => MoveTo(pos));
+            _ap.Ref = _connector;
+ 
+            try {
+                foreach(var _ in mv) {
+                    _connector.Connect();
+                    if(_connector.Status == MyShipConnectorStatus.Connected) {
+                        break;
+                    }
+                    yield return Nil._;
+                }
+                
+                if(_connector.Status == MyShipConnectorStatus.Connected) {
+                    _state = State.Docked;
+                } else {
+                    _state = State.Unknown;
+                }
+            } finally {
+                _ap.Ref = _rc;
+            }
         }
 
         private IEnumerator<Nil> RunLoop() {
             for(;;) {
-                if(_orient) {
-                    _gyro.Step();
-                    if(_gyro.IsOriented) {
-                        _orient = false;
-                        _gyro.Disable();
-                        _conn.Send(ORIENTDONE);
-                    } 
-                }
-
-                if(_move) {
-                    _ap.Step();
-                    if(_rc.GetShipSpeed() < 0.1 && (_rc.GetPosition() - _ap.PositionWorld).Length() < 1) {
-                        _move = false;
-                        _ap.Ref = _rc;
-                        _ap.Enabled = false;
-                        if(!_connect) _conn.Send(MOVEDONE);
+                if(_proc != null) {
+                    if(_proc.Poll()) {
+                        Report();
+                        _proc = null;
                     }
                 }
-
-                if(_connect) {
-                    _connector.Connect();
-                    if(_connector.Status == MyShipConnectorStatus.Connected) {
-                        _connect = false;
-                        _move = false;
-                        _ap.Ref = _rc;
-                        _ap.Enabled = false;
-                    } 
-                }
-
                 yield return Nil._;
             }
         }
