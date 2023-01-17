@@ -19,10 +19,26 @@ using VRageMath;
 using System.Collections.Immutable;
 
 namespace IngameScript {
+    static class Const {
+        public const string SURFACE_INI_SECTION = "controlsurface";
+    }
+
     partial class Program: MyGridProgram {
-          
+        MyIni _ini;
+        List<Surface> _surfaces = new List<Surface>();
+        ControlInput _input = new ControlInput();
+
         public Program() {
-             
+            try {
+                Log.Init(Me.GetSurface(0));
+                var rotors = new List<IMyMotorStator>();
+                GridTerminalSystem.GetBlocksOfType(rotors, r => MyIni.HasSection(r.CustomData, Const.SURFACE_INI_SECTION));
+                foreach(var rotor in rotors) {
+                    _surfaces.Add(new Surface(rotor));
+                }
+            } catch(Exception e) {
+                Log.Panic(e.ToString()); 
+            }
         }
 
         public void Save() {
@@ -33,32 +49,11 @@ namespace IngameScript {
              
         }
     }
-
-    class PID {
-        public double P, I, D;
-        double _ts, _tsInv, _errsum, _lasterr;
-        bool first = true;
-
-        public PID(double p, double i, double d, double ts = 0.16) {
-            P = p;
-            I = i;
-            D = d;
-            _ts = ts;
-            _tsInv = _ts / 1;
-            _errsum = 0;
-        }
-
-        public double Step(double err) {
-            double tD = (err - _lasterr) * _tsInv;
-            if(first) {
-                tD = 0;
-                first = false;
-            }
-
-            _errsum = _errsum + err * _ts;
-            _lasterr = err;
-            return P * err + I * _errsum + D * tD;
-        }
+    
+    /// <summary>
+    /// All user-controlled (pitch, yaw, roll) and computer controlled (flaps, wing sweep) user inputs
+    /// </summary>
+    struct ControlInput {
+    
     }
-
 }
