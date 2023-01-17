@@ -247,22 +247,4 @@ namespace IngameScript {
             void ExecuteRaw(Connection c, object data);
         }
     }
-
-    public interface IRpcMethod {
-        string Name { get; }
-    }
-
-    public class Rpc<Param, Ok, Err>: IRpcMethod {
-        public string Name { get; } 
-    }
-
-    public class RpcCaller<R, P, O, E>: Process<O> where R: Rpc<P,O,E> {
-        IMyIntergridCommunicationSystem IGC;
-
-        protected override IEnumerator<O> Run() {
-            while(_val == null) {
-                yield return default(O);
-            }
-        }
-    }
 }

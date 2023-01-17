@@ -18,9 +18,9 @@ namespace IngameScript {
 
             CMD = DOMAIN + ".cmd",
             // Vector3D pos
-            STAGEDOCK = CMD + ".mv",
+            STAGEDOCK = CMD + ".stage",
             // Vector3D orient
-            ORIENTDOCK = CMD + ".or",
+            ORIENTDOCK = CMD + ".orient",
             DOCK = CMD + ".dock",
             HOLD = CMD + ".hold",
 
@@ -140,7 +140,7 @@ namespace IngameScript {
         StationConn _conn;
         bool _orient;
 
-        Process _proc;
+        Process<Nil> _proc;
 
         State _state = State.Unknown;
 
@@ -170,6 +170,11 @@ namespace IngameScript {
             _conn.Send(REPORT, Enum.GetName(typeof(State), _state));
         }
 
+        void Transition(Process<Nil> proc) {
+            if(_proc != null) _proc.Stop();
+            _proc = proc;
+        }
+
         public Drone(MyIni ini, IMyIntergridCommunicationSystem IGC, IMyGridTerminalSystem GTS) : base(ini) {
             _rc = GTS.GetBlockWithName("CONTROL") as IMyRemoteControl;
             _ap = new Autopilot(GTS, _rc);
@@ -185,17 +190,17 @@ namespace IngameScript {
             var dispatch = new Dictionary<string, Sendy.IDispatch>() {
                 {
                     STAGEDOCK,
-                    new Dispatch<Vector3D>((conn, data) => { if(Valid(State.Unknown | State.Hold)) { StageDock(data); }})
+                    new Dispatch<Vector3D>((conn, data) => { if(Valid(State.Unknown | State.Hold)) { Transition(new MethodProcess<Nil>(() => StageDock(data))); }})
                 },
                 {
                     ORIENTDOCK,
-                    new Dispatch<Vector3D>((conn, data) => { if(Valid(State.StageDock)) { Orient(data); }})
+                    new Dispatch<Vector3D>((conn, data) => { if(Valid(State.StageDock)) { Transition(new MethodProcess<Nil>(() => Orient(data))); }})
                 },
                 {
                     DOCK,
                     new Dispatch<Vector3D>((conn, data) => {
                         if(!Valid(State.OrientedDock)) { return; }
-                        Connect(data); 
+                        Transition(new MethodProcess<Nil>(() => Connect(data))); 
                     })
                 }
             };
@@ -204,6 +209,7 @@ namespace IngameScript {
                 TransmitBroadcast = true,
                 CreateConnection = (s, a) => {
                     _conn = new StationConn(s, a);
+                    Report();
                     return _conn;
                 }
             };
