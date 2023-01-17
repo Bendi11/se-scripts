@@ -11,9 +11,14 @@ namespace IngameScript {
     /// Lightweight process interface used to implement multi-tick procedures using <c>IEnumerator</c> and 
     /// built-in language support for state machines using <c>yield</c>
     /// </summary>
-    public abstract class IProcess {
-        protected IEnumerator<Nil> _prog;
-        public IEnumerator<Nil> Progress {
+    public abstract class Process<T> {
+        protected IEnumerator<T> _prog;
+        protected T _val;
+
+        public T Value {
+            get { if(InProgress) throw new Exception("process not complete"); return _val; }
+        }
+        public IEnumerator<T> Progress {
             get { return _prog; }
             set {
                 if(_prog != null) {
@@ -28,7 +33,7 @@ namespace IngameScript {
             }
         }
         
-        public IEnumerator<Nil> GetEnumerator() => Progress;
+        public IEnumerator<T> GetEnumerator() => Progress;
         
         /// <summary>
         /// Begin the process, disposing of the state machine if the process was already running
@@ -40,7 +45,7 @@ namespace IngameScript {
         /// </summary>
         public virtual void Stop() { Progress = null; }
 
-        protected abstract IEnumerator<Nil> Run();
+        protected abstract IEnumerator<T> Run();
         
         /// <summary>
         /// Poll this process, progressing the state machine and cleaning up the process if
@@ -57,25 +62,28 @@ namespace IngameScript {
             if(more) {
                 return false;
             } else {
+                _val = Progress.Current;
                 Progress = null;
                 return true;
             }
         }
     }
+
+    public abstract class Process: Process<Nil> {}
     
     /// <summary>
     /// An implementation of <c>IProcess</c> that contains a reference to a method
     /// allowing a process to be easily constructed from a method without boilerplate process API implementation
     /// </summary>
-    public sealed class MethodProcess: IProcess {
-        Func<IEnumerator<Nil>> _func;
+    public class MethodProcess<T>: Process<T> {
+        Func<IEnumerator<T>> _func;
         Action _start;
         Action _end;
         
         /// <summary>
         /// Create a new <c>MethodProcess</c> from the given process method, plus optional setup and takedown functions
         /// </summary>
-        public MethodProcess(Func<IEnumerator<Nil>> func, Action start = null, Action end = null) {
+        public MethodProcess(Func<IEnumerator<T>> func, Action start = null, Action end = null) {
             _func = func;
             _start = start;
             _end = end;
@@ -90,6 +98,8 @@ namespace IngameScript {
             if(_end != null) _end();
             base.Stop();
         }
-        protected override IEnumerator<Nil> Run() => _func();
+        protected override IEnumerator<T> Run() => _func();
     }
+
+    public class MethodProcess: MethodProcess<Nil> { public MethodProcess(Func<IEnumerator<Nil>> f, Action s=null, Action e=null) : base(f,s,e) {} }
 }

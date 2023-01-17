@@ -13,7 +13,7 @@ namespace IngameScript {
         OperatingMode _mode;
         MyIni _ini;
 
-        IProcess _periodic;
+        Process<Nil> _periodic;
         CommsBase _comms;
 
         public Program() {

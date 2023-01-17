@@ -49,8 +49,8 @@ namespace IngameScript {
             _bw = fill(mat.Backward);
             _right = fill(mat.Right);
             _left = fill(mat.Left);
-            _up = fill(mat.Down);
-            _down = fill(mat.Up);
+            _up = fill(mat.Up);
+            _down = fill(mat.Down);
             UpdateMass();
         }
         

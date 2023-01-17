@@ -28,7 +28,7 @@ namespace IngameScript {
     /// reducing methods to register actions for specific requests
     /// </summary>
     public class Sendy {
-        public readonly IProcess RecvProcess, PeriodicProcess;
+        public readonly Process<Nil> RecvProcess, PeriodicProcess;
         public string Domain;
 
         public int TicksPerPeriod = 10;
@@ -38,7 +38,7 @@ namespace IngameScript {
         public int PingsBeforeDrop = 2;
         public Func<Sendy, long, Connection> CreateConnection = (me, addr) => new Connection(me, addr);
 
-        public const string 
+        public const string
             SENDY_DOMAIN = "sendy",
             CONN = SENDY_DOMAIN + ".conn",
             ESTABLISH_CONF = CONN + ".confirm",
@@ -214,7 +214,7 @@ namespace IngameScript {
                 if(act != null && act.Validate(msg.Data)) {
                     act.ExecuteRaw(conn, msg.Data);
                 }
-            } 
+            }
         }
 
         /// <summary>
@@ -245,6 +245,24 @@ namespace IngameScript {
         public interface IDispatch {
             bool Validate(object data);
             void ExecuteRaw(Connection c, object data);
+        }
+    }
+
+    public interface IRpcMethod {
+        string Name { get; }
+    }
+
+    public class Rpc<Param, Ok, Err>: IRpcMethod {
+        public string Name { get; } 
+    }
+
+    public class RpcCaller<R, P, O, E>: Process<O> where R: Rpc<P,O,E> {
+        IMyIntergridCommunicationSystem IGC;
+
+        protected override IEnumerator<O> Run() {
+            while(_val == null) {
+                yield return default(O);
+            }
         }
     }
 }

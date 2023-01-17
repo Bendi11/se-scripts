@@ -21,6 +21,7 @@ namespace IngameScript {
             MOVE = CMD + ".mv",
             // Vector3D orient
             ORIENT = CMD + ".or",
+            DOCK = CMD + ".dock",
             HOLD = CMD + ".hold",
 
             REPORT = DOMAIN + ".rep",
@@ -87,7 +88,7 @@ namespace IngameScript {
                     new EmptyDispatch<DroneConn>(conn => {
                         if(AssignPort(conn)) {
                             var mat = conn.Assigned.WorldMatrix;
-                            conn.Send(MOVE, mat.Translation + mat.GetOrientation().Forward * 5);
+                            conn.Send(MOVE, mat.Translation + mat.GetOrientation().Forward * 25);
                         }
                     })
                 },
@@ -95,7 +96,7 @@ namespace IngameScript {
                     ORIENTDONE,
                     new EmptyDispatch<DroneConn>(conn => {
                         if(AssignPort(conn)) {
-                        
+                            conn.Send(DOCK, conn.Assigned.GetPosition() + conn.Assigned.WorldMatrix.Forward);
                         }
                     })
                 },
@@ -132,11 +133,12 @@ namespace IngameScript {
         Autopilot _ap;
         IMyRemoteControl _rc;
         IMyShipConnector _connector;
-        public IProcess Periodic;
+        public Process<Nil> Periodic;
         StationConn _conn;
         bool _orient;
 
         bool _move;
+        bool _connect;
         Vector3D _pos;
 
         class StationConn: Sendy.Connection {
@@ -172,6 +174,14 @@ namespace IngameScript {
                 {
                     ORIENT,
                     new Dispatch<Vector3D>((conn, data) => Orient(data))
+                },
+                {
+                    DOCK,
+                    new Dispatch<Vector3D>((conn, data) => {
+                        _ap.Ref = _connector;
+                        MoveTo(data);
+                        _connect = true;
+                    })
                 }
             };
 
@@ -186,7 +196,7 @@ namespace IngameScript {
 
         void MoveTo(Vector3D pos) {
             _pos = pos;
-            _ap.PositionWorld = _rc.GetPosition() + Vector3D.Up * 3;
+            _ap.PositionWorld = pos;
             _ap.Enabled = true;
             _move = true;
         }
@@ -212,9 +222,20 @@ namespace IngameScript {
                     _ap.Step();
                     if(_rc.GetShipSpeed() < 0.1 && (_rc.GetPosition() - _ap.PositionWorld).Length() < 1) {
                         _move = false;
+                        _ap.Ref = _rc;
                         _ap.Enabled = false;
-                        _conn.Send(MOVEDONE);
+                        if(!_connect) _conn.Send(MOVEDONE);
                     }
+                }
+
+                if(_connect) {
+                    _connector.Connect();
+                    if(_connector.Status == MyShipConnectorStatus.Connected) {
+                        _connect = false;
+                        _move = false;
+                        _ap.Ref = _rc;
+                        _ap.Enabled = false;
+                    } 
                 }
 
                 yield return Nil._;
