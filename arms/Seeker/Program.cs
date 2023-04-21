@@ -20,9 +20,13 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
+        Seeker seeker;
          
         public Program() {
-
+            Log.Init(Me.GetSurface(0));
+            seeker = new Seeker(GridTerminalSystem, Me, Runtime);
+            seeker.Seek.Begin();
+            Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }
 
         public void Save() {
@@ -30,7 +34,11 @@ namespace IngameScript {
         }
 
         public void Main(string argument, UpdateType updateSource) {
-             
+            if(updateSource.HasFlag(UpdateType.Once)) {
+                if(!seeker.Seek.Poll()) {
+                    Runtime.UpdateFrequency |= UpdateFrequency.Once;
+                }
+            }
         }
     }
 }

@@ -20,7 +20,7 @@ using System.Collections.Immutable;
 using VRage.Library.Collections;
 
 namespace IngameScript {
-    /// A seeker head utilizing 
+    /// A seeker head utilizing a camera to raycast to accquire and track other ships
     class Seeker {
         /// Different types of scan patterns that can be utilized to provide target accquisition and tracking data
         public enum ScanMode {
@@ -40,17 +40,17 @@ namespace IngameScript {
             get { return _lock != null; }
         }
 
-        IMyGridProgramRuntimeInfo _me;
+        IMyGridProgramRuntimeInfo _rt;
         IMyCameraBlock _cam;
         /// A map of entity IDs to their corresponding contact
-        LRUCache<long, Contact> _lock = new LRUCache<long, Contact>(16);
+        Dictionary<long, Contact> _lock = new Dictionary<long, Contact>();
         
         /// A contact accquired by a ranging raycast with contact time and position data
         struct Contact {
             /// Position and velocity data acquired by a ranging scan
-            MyDetectedEntityInfo body;
+            public MyDetectedEntityInfo body;
             /// Last ping by a raycast
-            long time;
+            public float time;
         }
         
         /// The entity to track with a STT search pattern
@@ -58,7 +58,7 @@ namespace IngameScript {
         /// Progress through the current search pattern, 0 to 1
         float _patternProgress;
 
-        public Seeker(IMyGridTerminalSystem gts, IMyGridProgramRuntimeInfo me) {
+        public Seeker(IMyGridTerminalSystem gts, IMyProgrammableBlock me, IMyGridProgramRuntimeInfo rt) {
             List<IMyCameraBlock> cams = new List<IMyCameraBlock>();
             gts.GetBlocksOfType(
                 cams,
@@ -66,26 +66,42 @@ namespace IngameScript {
             );
 
             if(cams.Count != 1) {
-                throw new Exception("Must have exactly one block with a [seeker] attribute in custom data");
+                Log.Panic("Must have exactly one block with a [seeker] attribute in custom data");
             }
             _cam = cams.First();
 
             _lock = null;
             _patternProgress = 0f;
-            _me = me;
+            _rt = rt;
 
             Seek = new MethodProcess(SeekProc);
         }
 
         private IEnumerator<Nil> SeekProc() {
             for(;;) {
-                float time = (float)_me.TimeSinceLastRun.TotalSeconds;
+                float time = (float)_rt.TimeSinceLastRun.TotalSeconds;
                 _patternProgress += time;
                 _patternProgress = (_patternProgress > 1) ? 0 : _patternProgress;
 
                 switch(Mode) {
                     case ScanMode.RangeWhileScanStarburst: {
-                        float pitch = 
+                        float len = _patternProgress * (float)Math.Tau;
+                        float angle = len / 30f;
+                        len = _cam.RaycastConeLimit * (float)Math.Sin(len);
+
+                        float pitch = len * (float)Math.Sin(angle);
+                        float yaw = len * (float)Math.Cos(angle);
+
+                        var info = _cam.Raycast(ScanRange, pitch, yaw);
+                        if(!info.IsEmpty()) {
+                            Log.Put($"Got contact when scanning {pitch}, {yaw} - {info.EntityId} @ {info.Position}");
+                            long id = info.EntityId;
+                            Contact ping;
+                            
+                            ping.body = info;
+                            ping.time = (float)_rt.TimeSinceLastRun.TotalSeconds;
+                            _lock.Add(id, ping);    
+                        }
                     } break;
                 }
 
