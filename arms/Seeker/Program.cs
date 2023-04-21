@@ -21,10 +21,18 @@ using System.Collections.Immutable;
 namespace IngameScript {
     partial class Program: MyGridProgram {
         Seeker seeker;
+        uint scansPerTick = 1;
          
         public Program() {
             Log.Init(Me.GetSurface(0));
             seeker = new Seeker(GridTerminalSystem, Me, Runtime);
+            
+            MyIni ini = new MyIni();
+            if(ini.TryParse(Me.CustomData)) {
+                float mul = (float)ini.Get("seeker", "mul").ToDouble();
+                scansPerTick = ini.Get("seeker", "scans").ToUInt32();
+                seeker.ScanSpeedMultiplier = mul;
+            }
             seeker.Seek.Begin();
             Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }
@@ -35,9 +43,11 @@ namespace IngameScript {
 
         public void Main(string argument, UpdateType updateSource) {
             if(updateSource.HasFlag(UpdateType.Once)) {
-                if(!seeker.Seek.Poll()) {
-                    Runtime.UpdateFrequency |= UpdateFrequency.Once;
+                for(uint i = 0; i < scansPerTick; ++i) {
+                    seeker.Seek.Poll();
                 }
+
+                Runtime.UpdateFrequency |= UpdateFrequency.Once;
             }
         }
     }

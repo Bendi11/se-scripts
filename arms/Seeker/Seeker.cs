@@ -34,16 +34,22 @@ namespace IngameScript {
         }
         
         public ScanMode Mode = ScanMode.RangeWhileScanStarburst;
+        /// Scan steps per second
+        public float ScanSpeedMultiplier = 1f;
         public double ScanRange = 100;
+        public float ScanElevationRange;
+        public float ScanElevation = 0;
+        public float ScanAzimuthRange;
+        public float ScanAzimuth = 0;
         public readonly Process<Nil> Seek;
         public bool Locked {
-            get { return _lock != null; }
+            get { return _contacts != null; }
         }
 
         IMyGridProgramRuntimeInfo _rt;
         IMyCameraBlock _cam;
         /// A map of entity IDs to their corresponding contact
-        Dictionary<long, Contact> _lock = new Dictionary<long, Contact>();
+        Dictionary<long, Contact> _contacts = new Dictionary<long, Contact>();
         
         /// A contact accquired by a ranging raycast with contact time and position data
         struct Contact {
@@ -69,8 +75,10 @@ namespace IngameScript {
                 Log.Panic("Must have exactly one block with a [seeker] attribute in custom data");
             }
             _cam = cams.First();
+            _cam.EnableRaycast = true;
 
-            _lock = null;
+            ScanElevationRange = ScanAzimuthRange = _cam.RaycastConeLimit;
+
             _patternProgress = 0f;
             _rt = rt;
 
@@ -79,29 +87,36 @@ namespace IngameScript {
 
         private IEnumerator<Nil> SeekProc() {
             for(;;) {
-                float time = (float)_rt.TimeSinceLastRun.TotalSeconds;
-                _patternProgress += time;
+                float time = 0.016f; //(float)_rt.TimeSinceLastRun.TotalSeconds;
+                _patternProgress += time * ScanSpeedMultiplier;
                 _patternProgress = (_patternProgress > 1) ? 0 : _patternProgress;
+
+                if(_cam.RaycastDistanceLimit != -1 || _cam.RaycastDistanceLimit < ScanRange) {
+                    yield return Nil._;
+                }
 
                 switch(Mode) {
                     case ScanMode.RangeWhileScanStarburst: {
-                        float len = _patternProgress * (float)Math.Tau;
-                        float angle = len / 30f;
-                        len = _cam.RaycastConeLimit * (float)Math.Sin(len);
+                        float angle = _patternProgress * 2f * (float)Math.PI;
+                        float len = (float)(1f - (float)Math.Abs(2f - 50 * _patternProgress % 4));
 
-                        float pitch = len * (float)Math.Sin(angle);
-                        float yaw = len * (float)Math.Cos(angle);
+                        float pitch = (len + ScanElevation) * ScanElevationRange * (float)Math.Sin(angle);
+                        float yaw = (len + ScanAzimuth) * ScanAzimuthRange * (float)Math.Cos(angle);
 
                         var info = _cam.Raycast(ScanRange, pitch, yaw);
-                        if(!info.IsEmpty()) {
-                            Log.Put($"Got contact when scanning {pitch}, {yaw} - {info.EntityId} @ {info.Position}");
-                            long id = info.EntityId;
-                            Contact ping;
+                        if(!info.IsEmpty() && info.Relationship != MyRelationsBetweenPlayerAndBlock.Neutral) {
+                            Log.Put($"{info.Name} @ {info.Position} - {info.Relationship.ToString()}");
+                            /*long id = info.EntityId;
+                            Contact ping = new Contact();
                             
                             ping.body = info;
                             ping.time = (float)_rt.TimeSinceLastRun.TotalSeconds;
-                            _lock.Add(id, ping);    
+                            //_contacts.Add(id, ping);*/
                         }
+                    } break;
+
+                    case ScanMode.SingleTargetTrackPredictive: {
+
                     } break;
                 }
 
