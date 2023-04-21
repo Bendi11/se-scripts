@@ -1,4 +1,6 @@
 bin
 /env.csproj
 obj
+/sebuild/pkg/*
 final
+/.config
