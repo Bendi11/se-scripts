@@ -12,8 +12,8 @@ namespace IngameScript {
         public MyGridProgram prog;
         public Vector3 VelLocal;
         public Vector3 VelWorld {
-            get { return Vector3.TransformNormal(VelLocal, Control.WorldMatrix); }
-            set { VelLocal = Vector3.TransformNormal(value, MatrixD.Transpose(Control.WorldMatrix)); }
+            get { return Vector3.TransformNormal(VelLocal, Ref.WorldMatrix); }
+            set { VelLocal = Vector3.TransformNormal(value, MatrixD.Transpose(Ref.WorldMatrix)); }
         }
         
         bool _enabled = false;

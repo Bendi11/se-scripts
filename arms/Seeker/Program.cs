@@ -85,7 +85,6 @@ namespace IngameScript {
                         gyro.Enable();
                         thrust.Enabled = true;
 
-
                         var dist = Vector3.Distance(seeker.Tracked.body.HitPosition.Value, seeker.Cam.GetPosition());
                         float secondsSincePing = (float)(seeker.Ticks - seeker.Tracked.tick) * 0.016f;
 
@@ -94,15 +93,17 @@ namespace IngameScript {
                                 bomb.Detonate();
                             }
                         }
-                        Vector3D desiredVel = Vector3D.TransformNormal(
-                            seeker.Tracked.body.HitPosition.Value - seeker.Cam.GetPosition(),
-                                MatrixD.Transpose(seeker.Cam.WorldMatrix)
-                        ).Normalized();
-
-                        thrust.VelLocal = desiredVel * 35;
                         
-                        var currentVel = Vector3D.TransformNormal(seeker.Cam.CubeGrid.LinearVelocity, MatrixD.Transpose(seeker.Cam.WorldMatrix));
-                        gyro.OrientLocal = desiredVel - currentVel / 5;
+                        var vR = seeker.Tracked.body.Velocity - seeker.Cam.CubeGrid.LinearVelocity;
+                        var r = seeker.Tracked.body.Position - seeker.Cam.GetPosition();
+
+                        var omega = (r.Cross(vR)) / (r.Dot(r));
+                        
+                        var n = 4;
+                        var accel = -n * vR.Length() * r.Normalized() * omega;
+
+                        //thrust.VelWorld = accel;
+                        //gyro.OrientWorld = accel;
                     } else {
                         thrust.Enabled = false;
                         gyro.Disable();
@@ -111,7 +112,7 @@ namespace IngameScript {
                     Runtime.UpdateFrequency |= UpdateFrequency.Once;
                 }
             } catch(Exception e) {
-                Log.Panic(e.Message);
+                Log.Panic(e.ToString());
                 thrust.Enabled = false;
                 gyro.Disable();
             }
