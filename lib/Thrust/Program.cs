@@ -12,8 +12,8 @@ namespace IngameScript {
         public MyGridProgram prog;
         public Vector3 VelLocal;
         public Vector3 VelWorld {
-            get { return Vector3.TransformNormal(VelLocal, Ref.WorldMatrix); }
-            set { VelLocal = Vector3.TransformNormal(value, MatrixD.Transpose(Ref.WorldMatrix)); }
+            get { return Vector3.TransformNormal(VelLocal, Control.WorldMatrix); }
+            set { VelLocal = Vector3.TransformNormal(value, MatrixD.Transpose(Control.WorldMatrix)); }
         }
         
         bool _enabled = false;
@@ -29,13 +29,14 @@ namespace IngameScript {
             }
         }
 
-        public IMyShipController Ref;
+        public IMyShipController Control = null;
+        public IMyTerminalBlock Ref;
         public float Rate = 0.7F;
         float _mass;
         List<IMyThrust> _all = new List<IMyThrust>();
         List<IMyThrust> _right, _left, _up, _down, _fw, _bw;
         
-        public Thrust(IMyGridTerminalSystem GTS, IMyShipController _ref) {
+        public Thrust(IMyGridTerminalSystem GTS, IMyTerminalBlock _ref, float mass) {
             Ref = _ref;
             Func<Vector3D, List<IMyThrust>> fill = (dir) => {
                 var list = new List<IMyThrust>();
@@ -51,14 +52,20 @@ namespace IngameScript {
             _left = fill(mat.Left);
             _up = fill(mat.Up);
             _down = fill(mat.Down);
-            UpdateMass();
+            UpdateMass(mass);
         }
         
-        public void UpdateMass() => _mass = Ref.CalculateShipMass().TotalMass;
+        public Thrust(IMyGridTerminalSystem GTS, IMyShipController control) : this(GTS, control as IMyTerminalBlock, control.CalculateShipMass().TotalMass) {
+            this.Control = control; 
+        }
+        
+        
+        public void UpdateMass() => _mass = Control != null ? Control.CalculateShipMass().TotalMass : _mass;
+        public void UpdateMass(float mass) => _mass = mass;
 
         public void Step() {
             if(!_enabled) return;
-            var force = (VelLocal - Vector3D.TransformNormal(Ref.GetShipVelocities().LinearVelocity, MatrixD.Transpose(Ref.WorldMatrix))) * _mass * Rate;
+            var force = (VelLocal - Vector3D.TransformNormal(Ref.CubeGrid.LinearVelocity, MatrixD.Transpose(Ref.WorldMatrix))) * _mass * Rate;
             ApplyAccel(_right, force.X); 
             ApplyAccel(_left, -force.X);
             ApplyAccel(_up, force.Y);
