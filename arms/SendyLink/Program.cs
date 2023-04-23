@@ -22,31 +22,62 @@ namespace IngameScript {
     public static class SendyLink {
         [Flags]
         public enum Capabilities {
-            /// Multi-target acquisition
-            ACQ = 1,
-            /// Point tracking
-            TCK = 2,
+            None = 0,
+            /// Target acquisition
+            Acquisition = 1,
+            /// Torpedo behavior (target intercept)
+            Torpedo = 2,
+        }
+
+        [Flags]
+        public enum AcquisitionCapabilities {
+            None = 0,
+            /// Multi-target area search
+            Search = 1,
+            /// Single-target tracking providing more frequent updates on a single target
+            STT = 2,
+        }
+
+        public enum SPIMode {
+            /// Vector3D represents a local direction
+            LocalDir,
+            /// Vector representing a world direction
+            WorldDir,
+            /// Vector representing a world position
+            WorldPos,
+            /// Vector representing a (potentially) moving target with entity id and velocity to track
+            Target,
+            /// Same as `Target`, but vector is acquired using onboard STT lock
+            TargetLocal,
         }
 
         public struct TargetData {
+            public long EntityId;
             public Vector3D WorldPos;
             public Nullable<Vector3D> WorldVelocity;
 
             public object Encode() {
                 if(WorldVelocity.HasValue) {
-                    return WorldPos;
+                    return MyTuple.Create(EntityId, WorldPos);
                 } else {
-                    return MyTuple.Create(WorldPos, WorldVelocity.Value);
+                    return MyTuple.Create(EntityId, WorldPos, WorldVelocity.Value);
                 }
             }
 
             public static Nullable<TargetData> Decode(object o) {
                 var self = new TargetData();
-                if(o is Vector3D) { self.WorldPos = (Vector3D)o; }
-                else if(o is MyTuple<Vector3D, Vector3D>) {
-                    var tuple = (MyTuple<Vector3D, Vector3D>)o;
-                    self.WorldPos = tuple.Item1;
-                    self.WorldVelocity = tuple.Item2;
+                if(o is MyTuple<long, Vector3D>) {
+                    var tuple = (MyTuple<long, Vector3D>)o;
+                    self.EntityId = tuple.Item1;
+                    self.WorldPos = tuple.Item2;
+                }
+                else if(o is MyTuple<long, Vector3D, Vector3D>) {
+                    var tuple = (MyTuple<long, Vector3D, Vector3D>)o;
+                    self.EntityId = tuple.Item1;
+                    self.WorldPos = tuple.Item2;
+                    self.WorldVelocity = tuple.Item3;
+                } else {
+                    return null;
                 }
 
                 return self;
@@ -60,14 +91,39 @@ namespace IngameScript {
             Description,
             /// req: null, resp: Capabilities
             Capabilities,
-            
+            /// req: SPIMode
+            SPIModeSet,
+            /// Set the device's sensor-point-of-interest
+            /// req: TargetData
+            SPISet,
+
             /// null
             Enable,
             /// null
             Disable,
-            
+
+            /// Capabilities.Acquisition
+            /// resp: AcquisitionCapabilities
+            AcquisitionCapabilities,
+            /// AcquisitionCapabilities.Search
             /// req: null, resp: ImmutableList<TargetData>
-            Targets,
+            ListTargets,
+
+            /// AcquisitionCapabilities.STT
+            /// Sets SPI mode to SPIMode.TargetLocal
+            /// resp: TargetData (periodic)
+            LockTarget,
+            /// AcquisitionCapabilities.STT
+            /// null
+            DropLock,
+
+            /// Capabilities.Torpedo
+            /// Arm payload of a torpedo
+            Arm,
+            
+            /// Capabilities.Torpedo
+            /// Fire torpedo at SPI
+            Fire,
         }
     }
 }
