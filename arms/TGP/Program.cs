@@ -52,7 +52,7 @@ namespace IngameScript {
         /// PID tune used to control the yaw axis
         public PID YawPID = new PID(35, 0f, -0.1f);
         /// PID tune used to control the pitch axis
-        public PID PitchPID = new PID(35, 0f, -0.1f, 0.1f, 0.016f);
+        public PID PitchPID = new PID(35, 0f, -0.1f, 0.1f);
 
         public Vector3D TargetLocal {
             set {
