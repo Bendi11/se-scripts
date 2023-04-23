@@ -37,7 +37,10 @@ namespace IngameScript {
         /// <summary>
         /// Begin the process, disposing of the state machine if the process was already running
         /// </summary>
-        public virtual void Begin() { Progress = Run(); }
+        public virtual void Begin(double time) {
+            _time = time;
+            Progress = Run();
+        }
 
         /// <summary>
         /// Stop the process, disposing of the state machine
