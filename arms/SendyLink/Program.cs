@@ -20,6 +20,8 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     public static class SendyLink {
+        public const string DOMAIN = "sl";
+
         [Flags]
         public enum Capabilities {
             None = 0,
@@ -52,15 +54,17 @@ namespace IngameScript {
         }
 
         public struct TargetData {
+            /// -1 if no entity
             public long EntityId;
-            public Vector3D WorldPos;
+            /// Vector representing direction or position in world or local coordinates
+            public Vector3D Vec;
             public Nullable<Vector3D> WorldVelocity;
 
             public object Encode() {
                 if(WorldVelocity.HasValue) {
-                    return MyTuple.Create(EntityId, WorldPos);
+                    return MyTuple.Create(EntityId, Vec);
                 } else {
-                    return MyTuple.Create(EntityId, WorldPos, WorldVelocity.Value);
+                    return MyTuple.Create(EntityId, Vec, WorldVelocity.Value);
                 }
             }
 
@@ -69,12 +73,12 @@ namespace IngameScript {
                 if(o is MyTuple<long, Vector3D>) {
                     var tuple = (MyTuple<long, Vector3D>)o;
                     self.EntityId = tuple.Item1;
-                    self.WorldPos = tuple.Item2;
+                    self.Vec = tuple.Item2;
                 }
                 else if(o is MyTuple<long, Vector3D, Vector3D>) {
                     var tuple = (MyTuple<long, Vector3D, Vector3D>)o;
                     self.EntityId = tuple.Item1;
-                    self.WorldPos = tuple.Item2;
+                    self.Vec = tuple.Item2;
                     self.WorldVelocity = tuple.Item3;
                 } else {
                     return null;

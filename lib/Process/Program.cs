@@ -11,7 +11,7 @@ namespace IngameScript {
     /// Lightweight process interface used to implement multi-tick procedures using <c>IEnumerator</c> and 
     /// built-in language support for state machines using <c>yield</c>
     /// </summary>
-    public abstract class Process<T> {
+    public abstract class Process<Args, T> {
         protected IEnumerator<T> _prog;
         protected T _val;
         protected double _time;
@@ -37,9 +37,9 @@ namespace IngameScript {
         /// <summary>
         /// Begin the process, disposing of the state machine if the process was already running
         /// </summary>
-        public virtual void Begin(double time) {
+        public virtual void Begin(double time, Args args) {
             _time = time;
-            Progress = Run();
+            Progress = Run(args);
         }
 
         /// <summary>
@@ -47,7 +47,7 @@ namespace IngameScript {
         /// </summary>
         public virtual void Stop() { Progress = null; }
 
-        protected abstract IEnumerator<T> Run();
+        protected abstract IEnumerator<T> Run(Args args);
         
         /// <summary>
         /// Poll this process, progressing the state machine and cleaning up the process if
@@ -72,37 +72,52 @@ namespace IngameScript {
         }
     }
 
+    public abstract class Process<T>: Process<object, T> {
+        public virtual void Begin(double time) { base.Begin(time, null); }
+        protected override IEnumerator<T> Run(object o) => Run();
+        protected abstract IEnumerator<T> Run();
+    }
     public abstract class Process: Process<Nil> {}
     
     /// <summary>
     /// An implementation of <c>IProcess</c> that contains a reference to a method
     /// allowing a process to be easily constructed from a method without boilerplate process API implementation
     /// </summary>
-    public class MethodProcess<T>: Process<T> {
-        Func<IEnumerator<T>> _func;
+    public class MethodProcess<Args, T>: Process<Args, T> {
+        public delegate IEnumerator<T> ProcessFunc(Process<Args, T> self, Args args);
+        ProcessFunc _func;
         Action _start;
         Action _end;
         
         /// <summary>
         /// Create a new <c>MethodProcess</c> from the given process method, plus optional setup and takedown functions
         /// </summary>
-        public MethodProcess(Func<IEnumerator<T>> func, Action start = null, Action end = null) {
+        public MethodProcess(ProcessFunc func, Action start = null, Action end = null) {
             _func = func;
             _start = start;
             _end = end;
         }
 
-        public override void Begin() {
+        public override void Begin(double time, Args args) {
             if(_start != null) _start();
-            base.Begin();
+            base.Begin(time, args);
         }
 
         public override void Stop() {
             if(_end != null) _end();
             base.Stop();
         }
-        protected override IEnumerator<T> Run() => _func();
+        protected override IEnumerator<T> Run(Args args) => _func(this, (Args)args);
     }
 
-    public class MethodProcess: MethodProcess<Nil> { public MethodProcess(Func<IEnumerator<Nil>> f, Action s=null, Action e=null) : base(f,s,e) {} }
+    public class MethodProcess<T>: MethodProcess<object, T> {
+        public MethodProcess(ProcessFunc f,Action s=null,Action e=null) : base(f,s,e) {}
+        public void Begin(double time) => base.Begin(time, null);
+    }
+
+    public class MethodProcess: MethodProcess<Nil> {
+        public MethodProcess(Func<IEnumerator<Nil>> f, Action s=null, Action e=null) :
+            base((_, __) => f(), s, e)
+        {}
+    }
 }

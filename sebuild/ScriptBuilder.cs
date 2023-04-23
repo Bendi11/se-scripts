@@ -326,6 +326,7 @@ public class ScriptWorkspaceContext: IDisposable {
                 if(ToRename is not null) { return; }
                 var symbol = _sema.GetDeclaredSymbol(node) ?? throw new Exception($"Failed to get symbol for syntax {node.GetText()}");
                 if(
+                        (!symbol.CanBeReferencedByName) ||
                         (symbol is INamedTypeSymbol && (symbol.Name.Equals("Program"))) ||
                         (symbol is IMethodSymbol) && (symbol.Name.Equals("Save") || symbol.Name.Equals("Main"))
                 ) {
@@ -358,7 +359,7 @@ public class ScriptWorkspaceContext: IDisposable {
                     name = _gen.Next();
                 }
             }
-            Console.WriteLine($"Renaming {symbol.Name} to {name}");
+            Console.WriteLine($"Renaming {symbol.ToDisplayString()} to {name}");
             _final = await Renamer.RenameSymbolAsync(_final, symbol, _opts, name);
             Renamed.Add(name);
         }

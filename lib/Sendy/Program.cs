@@ -10,6 +10,8 @@ namespace IngameScript {
     /// reducing methods to register actions for specific requests
     /// </summary>
     public abstract class Sendy<Method> {
+        public delegate void ReceiveFunc(long addr, object data);
+
         public readonly IMyIntergridCommunicationSystem IGC;
         public IMyBroadcastListener Broadcast = null;
 
@@ -63,8 +65,8 @@ namespace IngameScript {
                     var data = (MyTuple<long, object>)msg.Data;
                     AwaitProcess proc;
                     if(_waiting.TryGetValue(data.Item1, out proc)) {
-                        proc.Response = data.Item2;
                         proc.From = msg.Source;
+                        proc.Response = data.Item2;
                     }
                 } break;
             }
@@ -103,17 +105,21 @@ namespace IngameScript {
         }
 
         class AwaitResponsesProcess: AwaitProcess {
-            Func<long, object, bool> _recv;
-            public AwaitResponsesProcess(Sendy<Method> sendy, double timeOut, long msgNo, Func<long, object, bool> recv) : base(sendy, timeOut, msgNo) {
+            Process<MyTuple<long, object>, bool> _recv;
+            public AwaitResponsesProcess(
+                    Sendy<Method> sendy,
+                    double timeOut,
+                    long msgNo,
+                    Process<MyTuple<long, object>, bool> recv
+                ) : base(sendy, timeOut, msgNo) {
                 _recv = recv;
             }
 
             protected override IEnumerator<object> Run() {
                 while(_timeOut != -1 && (_time - _startTime) > _timeOut) {
                     if(Response != null) {
-                        if(_recv.Invoke(From, Response)) {
-                            break;
-                        }
+                        _recv.Begin(_time, MyTuple.Create(From, Response));
+                        while(!_recv.Poll(_time)) { yield return Nil._; }
                         Response = null;
                     }
 
@@ -121,34 +127,42 @@ namespace IngameScript {
                 }
                 _sendy._waiting.Remove(_msgNo);
                 yield return null;
-            } 
+            }
         }
 
-        public long SendRequest<T>(long addr, Method method, T data) {
+        public long SendRequest(long addr, Method method, object data = null) {
             long msgNo = _msgNo++;
             IGC.SendUnicastMessage(addr, REQUEST, MyTuple.Create(method, msgNo, data));
             return msgNo;
         }
 
-        public long BroadcastRequest<T>(string tag, Method method, T data) {
+        public long BroadcastRequest(string tag, Method method, object data = null) {
             long msgNo = _msgNo++;
             IGC.SendBroadcastMessage(tag, MyTuple.Create(method, msgNo, data));
             return msgNo;
         }
         
-        public void Respond<T>(Request req, T data) {
+        public void Respond(Request req, object data = null) {
             IGC.SendUnicastMessage(req.Address, RESPONSE, MyTuple.Create(req.MsgNo, data));
         }
 
+        public void OnResponse(long msg, ReceiveFunc func) => _waiting[msg] = func;
+
         public Process<object> AwaitResponses(long msg, Func<long, object, bool> process, double timeOut = -1) {
             var proc = new AwaitResponsesProcess(this, timeOut, msg, process);
-            _waiting[msg] = proc;
+            _waiting[msg] = (addr, data) => {
+                proc.Response = data;
+                proc.From = addr;
+            };
             return proc;
         }
 
         public Process<object> AwaitResponse(long msg, double timeOut = -1) {
             var proc = new AwaitResponseProcess(this, timeOut, msg);
-            _waiting[msg] = proc;
+            _waiting[msg] = (addr, data) => {
+                proc.Response = data;
+                proc.From = addr;
+            };
             return proc;
         }
     }
