@@ -26,14 +26,16 @@ namespace IngameScript {
 
         float errsum = 0;
         float ts;
+        float tsInv;
         float last_err = float.NaN;
         float i_decay = 0F;
 
-        public PID(float kp, float ki, float kd, float idec = 0F, float time = 0.16F) {
+        public PID(float kp, float ki, float kd, float idec = 0F, float time = 0.016F) {
             P = kp;
             I = ki;
             D = kd;
             ts = time;
+            tsInv = 1f / ts;
             i_decay = idec;
         }
 
@@ -50,9 +52,9 @@ namespace IngameScript {
         public float Run(float error) {
             errsum += error;
             errsum *= (1F - i_decay);
-            float i = errsum * (1F - i_decay) * ts;
+            float i = errsum * (1F - i_decay) + error * ts;
             
-            float d = (error - last_err) / ts;
+            float d = (error - last_err) * tsInv;
             if(float.IsNaN(last_err)) {
                 d = 0;
             }

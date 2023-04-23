@@ -29,7 +29,7 @@ namespace IngameScript {
             IMyMotorStator pitch = GridTerminalSystem.GetBlockWithName("PITCH") as IMyMotorStator;
 
             tgp = new TGP(yaw, pitch, Me);
-            tgp.TargetWorld = Vector3D.Forward;
+            tgp.TargetWorldPos = new Vector3D(53574.62, -26609.58, 12070.56);
             tgp.Periodic.Begin();
 
             Runtime.UpdateFrequency |= UpdateFrequency.Update1;
@@ -50,9 +50,9 @@ namespace IngameScript {
         public IMyTerminalBlock Ref;
     
         /// PID tune used to control the yaw axis
-        public PID YawPID = new PID(20, 0, -0.1f);
+        public PID YawPID = new PID(35, 0f, -0.1f);
         /// PID tune used to control the pitch axis
-        public PID PitchPID = new PID(20, 0, -0.1f);
+        public PID PitchPID = new PID(35, 0f, -0.1f, 0.1f, 0.016f);
 
         public Vector3D TargetLocal {
             set {
@@ -101,31 +101,23 @@ namespace IngameScript {
             double az = 0;
             double el = 0;
             for(;;) {
-                Vector3D currentFacing;
-                Vector3D.CreateFromAzimuthAndElevation(
-                    Yaw.Angle - Math.PI,
-                    Pitch.Angle - Math.PI / 2f,
-                    out currentFacing
-                );
-                
-                Vector3D localTarget;
+                Vector3D localTarget = _target;
 
                 switch(_targetKind) {
-                    case TargetKind.Local: {
-                        localTarget = _target;
-                    } break;
-
                     case TargetKind.World: {
-                        localTarget = Vector3D.TransformNormal(_target, MatrixD.Transpose(Ref.WorldMatrix)),
+                        localTarget = Vector3D.TransformNormal(_target, MatrixD.Transpose(Ref.WorldMatrix));
                     } break;
 
                     case TargetKind.WorldPos: {
-
+                        localTarget = Vector3D.TransformNormal(
+                            (_target - Ref.WorldMatrix.Translation).Normalized(),
+                            MatrixD.Transpose(Ref.WorldMatrix)
+                        );
                     } break;
                 }
 
                 Vector3D.GetAzimuthAndElevation(
-                    _target,
+                    localTarget,
                     out az,
                     out el
                 );
