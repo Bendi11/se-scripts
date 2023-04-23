@@ -17,7 +17,7 @@ namespace IngameScript {
         IMyTerminalBlock _ref;
         Vector3 _localAlign;
         float _ang = 0F;
-        public float Rate = 0.2F;
+        public PID Pid = new PID(0.2f, 0f, 0f);
         public float OrientedThreshold = 0.0001F;
         public bool IsOriented { get { return Math.Abs(_ang) < OrientedThreshold; } }
         
@@ -51,7 +51,8 @@ namespace IngameScript {
         /// <returns>The angle between the reference block's forward vector and one of the gyroscopes</returns>
         public float Step() {
             Matrix gor;
-            GetAngle();
+            var error = GetAngle();
+            var speed = Pid.Run(error);
             foreach(var gyro in Gyros) {
                 gyro.Orientation.GetMatrix(out gor);
                 var localfw = Vector3.TransformNormal(_localAlign, Matrix.Transpose(gor));
@@ -59,8 +60,8 @@ namespace IngameScript {
 
                 var axis = Vector3.Cross(localfw, localmove);
                 axis.Normalize();
-                axis = -axis * Math.Abs(_ang) * Rate;
-                
+                axis = -axis * speed;
+
                 gyro.Pitch = axis.X;
                 gyro.Yaw = axis.Y;
                 gyro.Roll = axis.Z;
@@ -69,7 +70,7 @@ namespace IngameScript {
             return _ang;
         }
 
-        private void GetAngle() => _ang = AngleBetween(_ref.WorldMatrix.GetOrientation().Forward, OrientWorld);
+        private float GetAngle() => _ang = AngleBetween(_ref.WorldMatrix.GetOrientation().Forward, OrientWorld);
 
         private float AngleBetween(Vector3 a, Vector3 b) {
             a.Normalize();

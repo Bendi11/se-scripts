@@ -8,8 +8,6 @@
   </ImportGroup>
   <!-- Credit: https://github.com/malware-dev/MDK-SE/tree/master/Source/IngameScriptTemplate-->
   <ItemGroup>
-    <ProjectReference Include="../../lib/Gyro/Gyro.csproj" />
-    <ProjectReference Include="../../lib/Thrust/Thrust.csproj" />
     <ProjectReference Include="../../lib/Process/Process.csproj" />
     <ProjectReference Include="../../lib/Log/Log.csproj" />
     <Reference Include="System.Collections.Immutable">

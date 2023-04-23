@@ -19,103 +19,192 @@ using VRageMath;
 using System.Collections.Immutable;
 
 namespace IngameScript {
-    partial class Program: MyGridProgram {
-        Seeker seeker;
-        GyroController gyro;
-        Thrust thrust;
-        List<IMyWarhead> warheads;
-        uint scansPerTick = 1;
-        float lastDist = 0;
-         
-        public Program() {
-            Log.Init(Me.GetSurface(0));
-
-            try {
-                seeker = new Seeker(GridTerminalSystem, Me, Runtime);
-                List<IMyGyro> gyros = new List<IMyGyro>();
-                GridTerminalSystem.GetBlocksOfType(gyros, (gyro) => gyro.IsSameConstructAs(Me));
-                gyro = new GyroController(gyros, seeker.Cam);
-                gyro.Rate = 0.3f;
-                
-                MyIni ini = new MyIni();
-                if(ini.TryParse(Me.CustomData)) {
-                    float mul = (float)ini.Get("seeker", "mul").ToDouble();
-                    scansPerTick = ini.Get("seeker", "scans").ToUInt32();
-                    seeker.ScanAzimuth = (float)ini.Get("seeker", "az").ToDouble(seeker.ScanAzimuth);
-                    seeker.ScanElevation = (float)ini.Get("seeker", "el").ToDouble(seeker.ScanElevation);
-
-                    seeker.ScanAzimuthRange = (float)ini.Get("seeker", "azr").ToDouble(seeker.ScanAzimuthRange);
-                    seeker.ScanElevationRange = (float)ini.Get("seeker", "elr").ToDouble(seeker.ScanElevationRange);
-                    seeker.ScanSpeedMultiplier = mul;
+    /// A seeker head utilizing a camera to raycast to accquire and track other ships
+    class Seeker {
+        /// Different types of scan patterns that can be utilized to provide target accquisition and tracking data
+        public enum ScanMode {
+            /// Provides only target accquisition and ranging data while also scanning for new contacts
+            ///
+            /// Searches in a starburst pattern across the camera's FOV
+            RangeWhileScanStarburst,
+            
+            /// Provides STT-lock functionality, foregoing scan for new contacts in order to accurately range a selected target
+            SingleTargetTrackPredictive,
+        }
+        
+        public ScanMode Mode = ScanMode.RangeWhileScanStarburst;
+        /// Scan steps per second
+        public float ScanSpeedMultiplier = 1f;
+        public double ScanRange = 100;
+        public float ScanElevationRange {
+            get { return _elevationRange; }
+            set {
+                var remainRange = Cam.RaycastConeLimit - Math.Abs(ScanElevation);
+                if(remainRange < value) {
+                    value = remainRange;
                 }
-                
-                warheads = new List<IMyWarhead>();
-                GridTerminalSystem.GetBlocksOfType(warheads, (block) => block.IsSameConstructAs(Me));
-                foreach(var bomb in warheads) {
-                    bomb.IsArmed = true;
+                _elevationRange = value;
+            }
+        }
+        public float ScanElevation = 0;
+        public float ScanAzimuthRange {
+            get { return _azimuthRange; }
+            set {
+                var remainRange = Cam.RaycastConeLimit - Math.Abs(ScanAzimuth);
+                if(remainRange < value) {
+                    value = remainRange;
+                }
+                _azimuthRange = value;
+            }
+        }
+        public float ScanAzimuth = 0;
+        public readonly Process<Nil> Seek;
+        public bool Locked {
+            get { return _trackedEntity != -1; }
+        }
+
+        public Contact Tracked {
+            get {
+                if(Locked) {
+                    return _contacts[_trackedEntity];
                 }
 
-                thrust = new Thrust(GridTerminalSystem, seeker.Cam, 1506); 
-                thrust.Rate = 2f;
-                
-                seeker.Seek.Begin();
-                Runtime.UpdateFrequency |= UpdateFrequency.Once;
-            } catch(Exception e) {
-                Log.Panic(e.Message);
+                return null;
             }
         }
 
-        public void Save() {
-            
+        float _elevationRange;
+        float _azimuthRange;
+        public long Ticks = 0;
+
+        IMyGridProgramRuntimeInfo _rt;
+        public IMyCameraBlock Cam;
+        /// A map of entity IDs to their corresponding contact
+        Dictionary<long, Contact> _contacts = new Dictionary<long, Contact>();
+        
+        /// A contact accquired by a ranging raycast with contact time and position data
+        public class Contact {
+            /// Position and velocity data acquired by a ranging scan
+            public MyDetectedEntityInfo body;
+            /// Last ping by a raycast
+            public long tick;
+        }
+        
+        /// The entity to track with a STT search pattern
+        long _trackedEntity = -1;
+        /// Progress through the current search pattern, 0 to 1
+        float _patternProgress;
+
+        public Seeker(IMyGridTerminalSystem gts, IMyProgrammableBlock me, IMyGridProgramRuntimeInfo rt) {
+            List<IMyCameraBlock> cams = new List<IMyCameraBlock>();
+            gts.GetBlocksOfType(
+                cams,
+                (cam) => MyIni.HasSection(cam.CustomData, "seeker") && cam.IsSameConstructAs(me)
+            );
+
+            if(cams.Count != 1) {
+                Log.Panic("Must have exactly one block with a [seeker] attribute in custom data");
+            }
+
+            Cam = cams.First();
+            Cam.EnableRaycast = true;
+
+            _elevationRange = _azimuthRange = Cam.RaycastConeLimit;
+
+            _patternProgress = 0f;
+            _rt = rt;
+
+            Seek = new MethodProcess(SeekProc);
         }
 
-        public void Main(string argument, UpdateType updateSource) {
-            try {
-                if(updateSource.HasFlag(UpdateType.Once)) {
-                    seeker.Tick();
-                    gyro.Step();
-                    thrust.Step();
-                    for(uint i = 0; i < scansPerTick; ++i) {
-                        try {
-                            seeker.Seek.Poll();
-                        } catch(Exception e) { Log.Panic(e.Message); }
-                    }
+        public void Tick() {
+            Ticks += 1;
+        }
 
-                    if(seeker.Locked) { 
-                        gyro.Enable();
-                        thrust.Enabled = true;
+        private IEnumerator<Nil> SeekProc() {
+            for(;;) {
+                float time = (float)_rt.TimeSinceLastRun.TotalSeconds;
+                _patternProgress += time * ScanSpeedMultiplier;
+                _patternProgress = (_patternProgress > 1) ? 0 : _patternProgress;
 
-                        var dist = Vector3.Distance(seeker.Tracked.body.HitPosition.Value, seeker.Cam.GetPosition());
-                        float secondsSincePing = (float)(seeker.Ticks - seeker.Tracked.tick) * 0.016f;
+                if(!(Cam.RaycastDistanceLimit == -1 || Cam.RaycastDistanceLimit >= ScanRange)) {
+                    yield return Nil._;
+                }
 
-                        if(dist <= 1 || (dist <= 5 && secondsSincePing > 1)) {
-                            foreach(var bomb in warheads) {
-                                bomb.Detonate();
-                            }
+
+                switch(Mode) {
+                    case ScanMode.RangeWhileScanStarburst: {
+                        float angle = _patternProgress * 2f * (float)Math.PI;
+                        float len = (float)(1f - (float)Math.Abs(2f - 50 * _patternProgress % 4));
+
+                        float pitch = len * ScanElevationRange * (float)Math.Sin(angle) + ScanElevation;
+                        float yaw = len * ScanAzimuthRange * (float)Math.Cos(angle) + ScanAzimuth;
+
+                        var info = Cam.Raycast(ScanRange, pitch, yaw);
+                        if(!info.IsEmpty() && info.Relationship != MyRelationsBetweenPlayerAndBlock.Neutral) {
+                            Log.Put($"{info.Name} @ {info.Position} - {info.Relationship.ToString()}");
+                            long id = info.EntityId;
+                            Contact ping = new Contact();
+                            
+                            ping.body = info;
+                            ping.tick = Ticks;
+                            _contacts[id] = ping;
+                            _trackedEntity = id;
+                            Mode = ScanMode.SingleTargetTrackPredictive;
+                        }
+                    } break;
+
+                    case ScanMode.SingleTargetTrackPredictive: {
+                        MyDetectedEntityInfo cast = new MyDetectedEntityInfo();
+
+                        var tracked = _contacts[_trackedEntity];
+                        float secondsSincePing = (float)(Ticks - tracked.tick) * 0.016f;
+                        var expected = (tracked.body.Position + tracked.body.Velocity * secondsSincePing);
+
+                        cast = Cam.Raycast(expected);
+                        
+                        if(cast.IsEmpty() || cast.EntityId != _trackedEntity) {
+                            cast = Cam.Raycast(tracked.body.Position);
                         }
                         
-                        var vR = seeker.Tracked.body.Velocity - seeker.Cam.CubeGrid.LinearVelocity;
-                        var r = seeker.Tracked.body.Position - seeker.Cam.GetPosition();
 
-                        var omega = (r.Cross(vR)) / (r.Dot(r));
-                        
-                        var n = 4;
-                        var accel = -n * vR.Length() * r.Normalized() * omega;
+                        if(cast.IsEmpty() || cast.EntityId != _trackedEntity) {
+                            Vector3D dir = Vector3D.TransformNormal(
+                                expected - Cam.GetPosition(),
+                                    MatrixD.Transpose(Cam.WorldMatrix)
+                            ).Normalized();
 
-                        //thrust.VelWorld = accel;
-                        //gyro.OrientWorld = accel;
-                    } else {
-                        thrust.Enabled = false;
-                        gyro.Disable();
-                    }
+                            float angle = _patternProgress * 2f * (float)Math.PI;
+                            float len = (float)(1f - (float)Math.Abs(2f - 50 * _patternProgress % 4));
 
-                    Runtime.UpdateFrequency |= UpdateFrequency.Once;
+                            float pitch = len * (float)Math.PI / 50f * (float)Math.Sin(angle);
+                            float yaw = len * (float)Math.PI / 50f * (float)Math.Cos(angle);
+                            
+                            var rot = MatrixD.CreateRotationX(pitch) * MatrixD.CreateRotationY(yaw);
+                            Vector3D rotated;
+                            Vector3D.Rotate(ref dir, ref rot, out rotated);
+
+                            if(secondsSincePing > 5) {
+                                Mode = ScanMode.RangeWhileScanStarburst;
+                                _trackedEntity = -1;
+                                yield return Nil._;
+                            }
+
+                            cast = Cam.Raycast(ScanRange, rotated);
+                        }
+
+                        if(!cast.IsEmpty() && cast.EntityId == _trackedEntity) {
+                            tracked.tick = Ticks;
+                            tracked.body = cast;
+                        }
+ 
+                        yield return Nil._;
+                    } break;
                 }
-            } catch(Exception e) {
-                Log.Panic(e.ToString());
-                thrust.Enabled = false;
-                gyro.Disable();
+
+                yield return Nil._;
             }
         }
     }
+
 }
