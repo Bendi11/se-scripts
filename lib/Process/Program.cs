@@ -14,6 +14,7 @@ namespace IngameScript {
     public abstract class Process<T> {
         protected IEnumerator<T> _prog;
         protected T _val;
+        protected double _time;
 
         public T Value {
             get { if(InProgress) throw new Exception("process not complete"); return _val; }
@@ -32,8 +33,6 @@ namespace IngameScript {
                 return Progress != null;
             }
         }
-        
-        public IEnumerator<T> GetEnumerator() => Progress;
         
         /// <summary>
         /// Begin the process, disposing of the state machine if the process was already running
@@ -55,7 +54,8 @@ namespace IngameScript {
         /// <c>true</c> if the process has finished executing, and <c>false</c> if the process
         /// still needs further calls to <c>Poll</c> to complete
         /// </returns>
-        public virtual bool Poll() {
+        public virtual bool Poll(double time) {
+            _time = time;
             if(Progress == null) { return true; }
             bool more = Progress.MoveNext();
 
