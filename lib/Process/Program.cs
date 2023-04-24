@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using System.Collections;
-using System;
 
 namespace IngameScript {
+    public class Nil { public readonly static Nil _; }
+
     public static class Process {
         public static double Time = 0;
         static List<IEnumerable> _procs = new List<IEnumerable>();
