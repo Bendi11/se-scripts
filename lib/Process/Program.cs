@@ -18,9 +18,6 @@ namespace IngameScript {
             _procs.Add(process);
         }
 
-        public static T Get<T>(IEnumerable<T> proc) where T: class {
-            var current = proc.GetEnumerator().Current;
-            return current != default(T) && current is T ? current : default(T);
-        }
+        public static T Get<T>(IEnumerable<T> proc) => proc.GetEnumerator().Current;
     }
 }

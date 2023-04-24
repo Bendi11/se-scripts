@@ -23,6 +23,8 @@ namespace IngameScript {
         public const string DOMAIN = "sl";
 
         public enum Command {
+            /// bc: null, rt: null
+            Discover,
             /// bc: null, rt: string
             Name,
             /// bc: null, rt: string
