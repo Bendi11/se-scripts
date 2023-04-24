@@ -22,22 +22,96 @@ namespace IngameScript {
     public static class SendyLink {
         public const string DOMAIN = "sl";
 
-        [Flags]
-        public enum Capabilities {
-            None = 0,
-            /// Target acquisition
-            Acquisition = 1,
-            /// Torpedo behavior (target intercept)
-            Torpedo = 2,
+        public enum Command {
+            /// bc: null, rt: string
+            Name,
+            /// bc: null, rt: string
+            Description,
+            /// bc: null, rt: Device
+            Kind,
+            /// bc: bool, rt: null
+            SetEnabled,
+            
+            LEN,
         }
 
-        [Flags]
-        public enum AcquisitionCapabilities {
-            None = 0,
-            /// Multi-target area search
-            Search = 1,
-            /// Single-target tracking providing more frequent updates on a single target
-            STT = 2,
+        public enum Device {
+            /// Targeting pod allowing wide field-of-view acquisition with a camera
+            TGP,
+            /// A fixed radar with adjustable elevation and azimuth that can search and track targets
+            SearchTrackRadar,
+            /// A torpedo with independent target tracking
+            ActiveTrackingTorpedo,
+            /// A torpedo that must be guided via antenna
+            RemoteGuidedTorpedo,
+        }
+
+        public static class TGP {
+            public enum Command {
+                FIRST = SendyLink.Command.LEN + 1,
+                /// Cast a ray from the tgp camera and point lock a target if detected
+                /// bc: double (distance), rt: TargetData?
+                PointLock,
+                /// Get the current targeting mode
+                /// bc: null, rt: SPIMode
+                GetSPIMode,
+                /// Set the current targeting mode
+                /// bc: SPIMode, rt: null
+                SetSPIMode,
+                /// Set a vector representing the SPI, can be a local or world direction or a 
+                /// world position
+                /// bc: TargetData, rt: null
+                SetSPI,
+                /// Get the current SPI location / direction
+                /// bc: null, rt: TargetData
+                GetSPI,
+            }
+        }
+
+        public static class SearchTrackRadar {
+            public enum Command {
+                FIRST = SendyLink.Command.LEN,
+                /// Set the current tracking mode
+                /// bc: Mode, rt: null
+                SetMode,
+                
+                /// Get a list of the currently detected entities
+                /// bc: null, rt: ImmutableList<TargetData>
+                SearchList,
+                /// Get the currently-tracked target
+                /// bc: null, rt: TargetData?
+                GetTracked,
+
+                /// Get the direction that the radar points in world coordinates
+                /// bc: null, rt: Vector3D
+                GetFacing,
+
+                /// bc: null, rt: double
+                GetEl,
+                /// bc: double, rt: null
+                SetEl,
+                /// bc: null, rt: double
+                GetAz,
+                /// bc: double, rt: null
+                SetAz,
+                
+                /// bc: double, rt: null
+                SetElLim,
+                /// bc: null, rt: double
+                GetElLim,
+                /// bc: double, rt: null
+                SetAzLim,
+                /// bc: null, rt: double
+                GetAzLim,
+            }
+            
+            /// Targeting modes for radar
+            public enum Mode {
+                /// Range-while-scan: search for targets in the FOV
+                RWS,
+                /// Single-target-track: track a single target
+                STT,
+            }
         }
 
         public enum SPIMode {
@@ -49,8 +123,6 @@ namespace IngameScript {
             WorldPos,
             /// Vector representing a (potentially) moving target with entity id and velocity to track
             Target,
-            /// Same as `Target`, but vector is acquired using onboard STT lock
-            TargetLocal,
         }
 
         public struct TargetData {
@@ -86,48 +158,6 @@ namespace IngameScript {
 
                 return self;
             }
-        }
-
-        public enum Request {
-            /// resp: string
-            Name,
-            /// resp: string
-            Description,
-            /// req: null, resp: Capabilities
-            Capabilities,
-            /// req: SPIMode
-            SPIModeSet,
-            /// Set the device's sensor-point-of-interest
-            /// req: TargetData
-            SPISet,
-
-            /// null
-            Enable,
-            /// null
-            Disable,
-
-            /// Capabilities.Acquisition
-            /// resp: AcquisitionCapabilities
-            AcquisitionCapabilities,
-            /// AcquisitionCapabilities.Search
-            /// req: null, resp: ImmutableList<TargetData>
-            ListTargets,
-
-            /// AcquisitionCapabilities.STT
-            /// Sets SPI mode to SPIMode.TargetLocal
-            /// resp: TargetData (periodic)
-            LockTarget,
-            /// AcquisitionCapabilities.STT
-            /// null
-            DropLock,
-
-            /// Capabilities.Torpedo
-            /// Arm payload of a torpedo
-            Arm,
-            
-            /// Capabilities.Torpedo
-            /// Fire torpedo at SPI
-            Fire,
         }
     }
 }
