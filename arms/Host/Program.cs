@@ -20,8 +20,6 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     public abstract class Host: Sendy<SendyLink.Request> {
-        public readonly Process<Nil> Process;
-
         public class ConnectedDevice {
             public long Address;
             public SendyLink.Capabilities Capabilities;
@@ -31,43 +29,43 @@ namespace IngameScript {
         public List<ConnectedDevice> Devices = new List<ConnectedDevice>();
 
         public Host(IMyIntergridCommunicationSystem IGC) : base(IGC) {
-            Process = new MethodProcess(Run);
+            
         }
 
-        public IEnumerator<Nil> DiscoverDevices() {
+        public IEnumerator<object> DiscoverDevices() {
             long broadcast = BroadcastRequest(
                 SendyLink.DOMAIN,
-                SendyLink.Request.Name,
-                0
+                SendyLink.Request.Name
             );
 
-            Process<object> wait = AwaitResponses(
-                broadcast,
-                (addr, nameObj) => {
-                    var device = new ConnectedDevice() {
-                        Address = addr
-                    };
-
-                    OnResponse(
-                        SendRequest(addr, SendyLink.Request.Capabilities),
-                        (_, resp) => {
-                            device.Capabilities = (SendyLink.Capabilities)(long)resp;
-                            if(device.Capabilities.HasFlag(SendyLink.Capabilities.Acquisition)) {
-                                OnResponse(
-                                    SendRequest(addr, SendyLink.Request.AcquisitionCapabilities),
-                                    (__, r) => {
-                                        device.AcquisitionCapabilities = (SendyLink.AcquisitionCapabilities)(long)r;
-                                    }
-                                );
-                            }
-                        }
-                    );
-
-                    return false;
+            var broadcastResponses = WaitResponses(broadcast, 15);
+            foreach(var contact in broadcastResponses) {
+                if(!contact.HasValue) {
+                    yield return null;
                 }
-            );
+
+                IEnumerable<Nullable<Response>> wait;
+
+                wait = WaitResponse(SendRequest(contact.Value.Address, SendyLink.Request.Capabilities));
+                foreach(var prog in wait) { yield return null; }
+                string description = wait.GetEnumerator().Current.Value.Data as string;
+                
+                wait = WaitResponse(SendRequest(contact.Value.Address, SendyLink.Request.AcquisitionCapabilities));
+                foreach(var prog in wait) { yield return null; }
+
+                var capabilities = (SendyLink.Capabilities)wait.GetEnumerator().Current.Value.Data;
+                
+                var acq = SendyLink.AcquisitionCapabilities.None;
+                if(capabilities.HasFlag(SendyLink.Capabilities.Acquisition)) {
+                    wait = WaitResponse(SendRequest(contact.Value.Address))
+                }
+            }
         }
 
-        protected abstract IEnumerator<Nil> Run();
+        private class OnNameResponse: Process<MyTuple<long, object>, bool> {
+            protected override IEnumerator<bool> Run(MyTuple<long, object> args) {
+                ;
+            }
+        }
     }
 }

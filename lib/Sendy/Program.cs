@@ -1,7 +1,6 @@
 using Sandbox.ModAPI.Ingame;
 using System.Collections.Generic;
 using System;
-using System.Collections.Immutable;
 using VRage;
 
 namespace IngameScript {
@@ -10,17 +9,20 @@ namespace IngameScript {
     /// reducing methods to register actions for specific requests
     /// </summary>
     public abstract class Sendy<Method> {
-        public delegate void ReceiveFunc(long addr, object data);
-
         public readonly IMyIntergridCommunicationSystem IGC;
         public IMyBroadcastListener Broadcast = null;
 
         long _msgNo = 1;
-        Dictionary<long, AwaitProcess> _waiting;
+        Dictionary<long, Nullable<Response>> _waiting;
 
         public const string
             REQUEST = "req",
             RESPONSE = "resp";
+
+        public struct Response {
+            public long Address;
+            public object Data;
+        }
 
         public struct Request {
             public Method Method;
@@ -63,71 +65,39 @@ namespace IngameScript {
                 case RESPONSE: {
                     if(!(msg.Data is MyTuple<long, object>)) { Log.Warn($"Invalid response payload: {msg.Data.GetType()}"); return; }
                     var data = (MyTuple<long, object>)msg.Data;
-                    AwaitProcess proc;
-                    if(_waiting.TryGetValue(data.Item1, out proc)) {
-                        proc.From = msg.Source;
-                        proc.Response = data.Item2;
+                    Nullable<Response> resp;
+                    if(_waiting.TryGetValue(data.Item1, out resp)) {
+                        resp = new Response() {
+                            Address = msg.Source,
+                            Data = data.Item2
+                        };
                     }
                 } break;
             }
         }
 
-        abstract class AwaitProcess: Process<object> {
-            protected double _timeOut = -1, _startTime;
-            protected long _msgNo;
-            public object Response = null;
-            public long From = -1;
-            protected Sendy<Method> _sendy;
-
-            public AwaitProcess(Sendy<Method> sendy, double timeOut, long msgNo) {
-                _timeOut = timeOut;
-                _msgNo = msgNo;
-                _sendy = sendy;
-            }
-
-            public override void Begin(double time) {
-                _startTime = time;
-                base.Begin(time);
-            }
-        }
-
-        class AwaitResponseProcess: AwaitProcess {
-            public AwaitResponseProcess(Sendy<Method> sendy, double timeOut, long msgNo) : base(sendy, timeOut, msgNo) {}
-
-            protected override IEnumerator<object> Run() {
-                while(Response == null && _timeOut != -1 && (_time - _startTime) > _timeOut) {
-                    yield return null;
+        public IEnumerable<Nullable<Response>> WaitResponse(long msgNo, double timeOut = -1) {
+            var startTime = Process.Time;
+            while(timeOut != -1 && Process.Time - startTime < timeOut) {
+                if(_waiting[msgNo].HasValue) {
+                    yield return _waiting[msgNo];
+                    yield break;
                 }
 
-                _sendy._waiting.Remove(_msgNo);
-                yield return Response;
-            } 
-        }
-
-        class AwaitResponsesProcess: AwaitProcess {
-            Process<MyTuple<long, object>, bool> _recv;
-            public AwaitResponsesProcess(
-                    Sendy<Method> sendy,
-                    double timeOut,
-                    long msgNo,
-                    Process<MyTuple<long, object>, bool> recv
-                ) : base(sendy, timeOut, msgNo) {
-                _recv = recv;
-            }
-
-            protected override IEnumerator<object> Run() {
-                while(_timeOut != -1 && (_time - _startTime) > _timeOut) {
-                    if(Response != null) {
-                        _recv.Begin(_time, MyTuple.Create(From, Response));
-                        while(!_recv.Poll(_time)) { yield return Nil._; }
-                        Response = null;
-                    }
-
-                    yield return null;
-                }
-                _sendy._waiting.Remove(_msgNo);
                 yield return null;
             }
+
+            _waiting.Remove(msgNo);
+        }
+
+        public IEnumerable<Nullable<Response>> WaitResponses(long msgNo, double timeOut = -1) {
+            var startTime = Process.Time;
+            while(timeOut != -1 && (Process.Time - startTime) < timeOut) {
+                yield return _waiting[msgNo].Value;
+                _waiting[msgNo] = null;
+            }
+
+            _waiting.Remove(msgNo);
         }
 
         public long SendRequest(long addr, Method method, object data = null) {
@@ -144,26 +114,6 @@ namespace IngameScript {
         
         public void Respond(Request req, object data = null) {
             IGC.SendUnicastMessage(req.Address, RESPONSE, MyTuple.Create(req.MsgNo, data));
-        }
-
-        public void OnResponse(long msg, ReceiveFunc func) => _waiting[msg] = func;
-
-        public Process<object> AwaitResponses(long msg, Func<long, object, bool> process, double timeOut = -1) {
-            var proc = new AwaitResponsesProcess(this, timeOut, msg, process);
-            _waiting[msg] = (addr, data) => {
-                proc.Response = data;
-                proc.From = addr;
-            };
-            return proc;
-        }
-
-        public Process<object> AwaitResponse(long msg, double timeOut = -1) {
-            var proc = new AwaitResponseProcess(this, timeOut, msg);
-            _waiting[msg] = (addr, data) => {
-                proc.Response = data;
-                proc.From = addr;
-            };
-            return proc;
         }
     }
 }
