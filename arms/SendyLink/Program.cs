@@ -23,108 +23,39 @@ namespace IngameScript {
         public const string DOMAIN = "sl";
 
         public enum Command {
-            /// bc: null, rt: null
-            Discover,
-            /// bc: null, rt: string
-            Name,
-            /// bc: null, rt: string
-            Description,
-            /// bc: null, rt: Device
-            Kind,
+            /// Unicast from rt to bc
+            /// bc: null, rt: RemoteTerminalData
+            Connect,
             /// bc: bool, rt: null
             SetEnabled,
             
             LEN,
         }
 
+        public struct RemoteTerminalData {
+            public string Name, Description;
+            public Device Kind;
+
+            public object Encode() { return MyTuple.Create(Name, Description, (int)Kind); }
+            public static Nullable<RemoteTerminalData> Decode(object o) {
+                if(o is MyTuple<string, string, int>) {
+                    var tuple = (MyTuple<string, string, int>)o;
+                    return new RemoteTerminalData() {
+                        Name = tuple.Item1,
+                        Description = tuple.Item2,
+                        Kind = (Device)(int)tuple.Item3
+                    };
+                }
+
+                return null;
+            }
+        }
+
         public enum Device {
-            /// Targeting pod allowing wide field-of-view acquisition with a camera
-            TGP,
-            /// A fixed radar with adjustable elevation and azimuth that can search and track targets
-            SearchTrackRadar,
             /// A torpedo with independent target tracking
             ActiveTrackingTorpedo,
             /// A torpedo that must be guided via antenna
             RemoteGuidedTorpedo,
-        }
-
-        public static class TGP {
-            public enum Command {
-                FIRST = SendyLink.Command.LEN + 1,
-                /// Cast a ray from the tgp camera and point lock a target if detected
-                /// bc: double (distance), rt: TargetData?
-                PointLock,
-                /// Get the current targeting mode
-                /// bc: null, rt: SPIMode
-                GetSPIMode,
-                /// Set the current targeting mode
-                /// bc: SPIMode, rt: null
-                SetSPIMode,
-                /// Set a vector representing the SPI, can be a local or world direction or a 
-                /// world position
-                /// bc: TargetData, rt: null
-                SetSPI,
-                /// Get the current SPI location / direction
-                /// bc: null, rt: TargetData
-                GetSPI,
-            }
-        }
-
-        public static class SearchTrackRadar {
-            public enum Command {
-                FIRST = SendyLink.Command.LEN,
-                /// Set the current tracking mode
-                /// bc: Mode, rt: null
-                SetMode,
-                
-                /// Get a list of the currently detected entities
-                /// bc: null, rt: ImmutableList<TargetData>
-                SearchList,
-                /// Get the currently-tracked target
-                /// bc: null, rt: TargetData?
-                GetTracked,
-
-                /// Get the direction that the radar points in world coordinates
-                /// bc: null, rt: Vector3D
-                GetFacing,
-
-                /// bc: null, rt: double
-                GetEl,
-                /// bc: double, rt: null
-                SetEl,
-                /// bc: null, rt: double
-                GetAz,
-                /// bc: double, rt: null
-                SetAz,
-                
-                /// bc: double, rt: null
-                SetElLim,
-                /// bc: null, rt: double
-                GetElLim,
-                /// bc: double, rt: null
-                SetAzLim,
-                /// bc: null, rt: double
-                GetAzLim,
-            }
-            
-            /// Targeting modes for radar
-            public enum Mode {
-                /// Range-while-scan: search for targets in the FOV
-                RWS,
-                /// Single-target-track: track a single target
-                STT,
-            }
-        }
-
-        public enum SPIMode {
-            /// Vector3D represents a local direction
-            LocalDir,
-            /// Vector representing a world direction
-            WorldDir,
-            /// Vector representing a world position
-            WorldPos,
-            /// Vector representing a (potentially) moving target with entity id and velocity to track
-            Target,
         }
 
         public struct TargetData {

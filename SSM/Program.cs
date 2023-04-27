@@ -143,7 +143,7 @@ namespace IngameScript {
                         var n = 5;
                         var accel = (n * vR).Cross(omega); 
 
-                        thrust.VelWorld = accel / 0.016f;
+                        thrust.VelWorld += accel / 0.016f;
                         gyro.OrientWorld = Vector3D.Normalize(accel);
                     } else {
                         thrust.Enabled = true;
