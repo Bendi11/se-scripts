@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Collections;
 
 namespace IngameScript {
-    public class Nil { public readonly static Nil _; }
+    public struct Nil { public readonly static Nil _; }
 
     public static class Process {
         public static double Time = 0;

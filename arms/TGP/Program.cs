@@ -19,27 +19,6 @@ using VRageMath;
 using System.Collections.Immutable;
 
 namespace IngameScript {
-    partial class Program: MyGridProgram {
-        TGP tgp;
-
-        public Program() {
-            Log.Init(Me.GetSurface(0));
-
-            IMyMotorStator yaw = GridTerminalSystem.GetBlockWithName("YAW") as IMyMotorStator;
-            IMyMotorStator pitch = GridTerminalSystem.GetBlockWithName("PITCH") as IMyMotorStator;
-
-            tgp = new TGP(yaw, pitch, Me);
-            tgp.TargetWorldPos = new Vector3D(53574.62, -26609.58, 12070.56);
-            tgp.Periodic.Begin();
-
-            Runtime.UpdateFrequency |= UpdateFrequency.Update1;
-        }
-
-        public void Main(string arg, UpdateType source) {
-            tgp.Periodic.Poll();
-        }
-    }
-
     /// General controller for a pitch + yaw gimbal
     public class TGP {
         /// Device used for yaw angle control
@@ -75,13 +54,14 @@ namespace IngameScript {
             }
         }
 
-        public readonly Process<Nil> Periodic;
-
         enum TargetKind {
             Local,
             World,
             WorldPos,
         }
+
+        float _yawHome = 0f;
+        float _pitchHome = 0f;
 
         TargetKind _targetKind = TargetKind.Local;
         
@@ -91,13 +71,33 @@ namespace IngameScript {
         public TGP(IMyMotorStator yaw, IMyMotorStator pitch, IMyTerminalBlock _ref) {
             Yaw = yaw;
             Pitch = pitch;
-            Ref = _ref;
+            
+            MyIni ini = new MyIni();
+            MyIniParseResult res;
 
-            Periodic = new MethodProcess(Maintain);
+            if(!ini.TryParse(Yaw.CustomData, out res)) {
+                Log.Warn($"Failed to parse custom data for yaw: {res.ToString()}");
+            }
+
+            if(ini.ContainsKey("tgp", "center")) {
+                _yawHome = (float)ini.Get("tgp", "center").ToDouble();
+                _yawHome *= (float)Math.PI / 180f;
+            }
+            
+            ini.Clear();
+            if(!ini.TryParse(Pitch.CustomData, out res)) {
+                Log.Warn($"Failed to parse custom data for pitch: {res.ToString()}");
+            }
+
+            if(ini.ContainsKey("tgp", "center")) {
+                _pitchHome = (float)ini.Get("tgp", "center").ToDouble();
+                _pitchHome *= (float)Math.PI / 180f;
+            }
+            Ref = _ref;
         }
         
         /// Maintain the desired orientation
-        public IEnumerator<Nil> Maintain() {
+        public IEnumerable<Nil> Maintain() {
             double az = 0;
             double el = 0;
             for(;;) {
@@ -121,13 +121,11 @@ namespace IngameScript {
                     out az,
                     out el
                 );
-                 
-                Log.Put($"{el}, {az} - {_target}");
+
                 el = Double.IsNaN(el) ? 0 : el;
                 az = Double.IsNaN(az) ? 0 : az;
-                Yaw.TargetVelocityRad = YawPID.Run((float)(az - (Yaw.Angle - Math.PI)));
-                Pitch.TargetVelocityRad = PitchPID.Run((float)(el - (Pitch.Angle - Math.PI / 2f)));
-
+                Yaw.TargetVelocityRad = YawPID.Run((float)(az - (Yaw.Angle - _yawHome)));
+                Pitch.TargetVelocityRad = PitchPID.Run((float)(el - (Pitch.Angle - _pitchHome)));
                 yield return Nil._;
             }
         }
