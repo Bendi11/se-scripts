@@ -3,10 +3,11 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 
 namespace SeBuild;
 
-public class PreMinifier {
+public class Renamer {
         readonly Solution _sln;
         ProjectId _project;
         readonly NameGenerator _gen = new NameGenerator();
@@ -100,12 +101,12 @@ public class PreMinifier {
             }
         }
 
-        public PreMinifier(Workspace ws, Solution sln, ProjectId project, PreMinifier other) : this(ws, sln, project) {
+        public Renamer(Workspace ws, Solution sln, ProjectId project, Renamer other) : this(ws, sln, project) {
             Renamed = other.Renamed;
             _gen = other._gen;
         }
 
-        public PreMinifier(Workspace ws, Solution sln, ProjectId project) {
+        public Renamer(Workspace ws, Solution sln, ProjectId project) {
             _sln = sln;
             _final = _sln;
             _project = project;
@@ -239,7 +240,7 @@ public class PreMinifier {
                 }
             }
             Console.WriteLine($"Renaming {symbol.ToDisplayString()} to {name}");
-            _final = await Renamer.RenameSymbolAsync(_final, symbol, _opts, name);
+        _final = await Microsoft.CodeAnalysis.Rename.Renamer.RenameSymbolAsync(_final, symbol, _opts, name);
             Renamed.Add(name);
         }
     }

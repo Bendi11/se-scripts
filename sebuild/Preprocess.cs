@@ -2,7 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Sebuild;
+namespace SeBuild;
 
 /// <summary>
 /// Builds a single .csproj project: resolves project references, removes header / footer code, and returns the

@@ -4,7 +4,6 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
-using Sebuild;
 
 namespace SeBuild;
 
@@ -48,7 +47,7 @@ public class ScriptWorkspaceContext: IDisposable {
     async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false) {
         var docs = new List<Document>();
         if(rename) {
-            var mini = await MinifyProject(sln, p, docs);
+            var mini = await RenameAllSymbols(sln, p, docs);
             loadedDocs.Clear();
             GetDocuments(mini, p, docs);
         } else {
@@ -64,27 +63,27 @@ public class ScriptWorkspaceContext: IDisposable {
     /// <summary>
     /// Minify a project and all dependencies of the project
     /// </summary>
-    async private Task<Solution> MinifyProject(Solution sol, ProjectId p, List<Document> docs, PreMinifier? other = null) {
+    async private Task<Solution> RenameAllSymbols(Solution sol, ProjectId p, List<Document> docs, Renamer? other = null) {
         if(loadedDocs.Contains(p)) return sol; 
-        var mini = other is null ? new PreMinifier(workspace, sol, p) : new PreMinifier(workspace, sol, p, other);
+        var mini = other is null ? new Renamer(workspace, sol, p) : new Renamer(workspace, sol, p, other);
         var (minisol, newproj) = await mini.Run();
         sol = minisol;
         
         loadedDocs.Add(p);
 
         foreach(var reference in newproj.ProjectReferences) {
-            sol = await MinifyProject(sol, reference.ProjectId, docs, mini);
+            sol = await RenameAllSymbols(sol, reference.ProjectId, docs, mini);
         }
 
         return sol;
     }
 
     private void GetDocuments(Solution sln, ProjectId id, List<Document> docs) {
-        var getProj = (ProjectId id) => sln.GetProject(id) ?? throw new Exception($"Failed to find project in solution {sln.FilePath} with ID {id}");
         if(loadedDocs.Contains(id)) { return; }
         loadedDocs.Add(id);
 
-        var proj = getProj(id);
+        var proj = sln.GetProject(id)
+            ?? throw new Exception($"Failed to find project in solution {sln.FilePath} with ID {id}");
         foreach(var doc in proj.Documents) {
             docs.Add(doc);
         }
@@ -129,5 +128,4 @@ public class ScriptWorkspaceContext: IDisposable {
         scriptDir = msbuildProject.GetPropertyValue("SpaceEngineersScript");
         if(scriptDir.Length == 0) { throw new Exception("No SpaceEngineersScript property defined in env.csproj"); }
     }
-
-    }
+}
