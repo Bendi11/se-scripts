@@ -16,10 +16,12 @@ public class DeadCodeRemover {
         _proj = proj;
     }
 
-    public static async Task<(Solution, Project)> Build(Solution sln, Project proj) =>
+    public static async Task<Solution> Build(Solution sln, Project proj) =>
         await new DeadCodeRemover(sln, proj).Build();
 
-    public async Task<(Solution, Project)> Build() {
+    public async Task<Solution> Build() {
+        _alive.Clear();
+        await Init();
         foreach(var doc in _proj.Documents) {
             var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
             if(syntax is null) { continue; }
@@ -29,7 +31,53 @@ public class DeadCodeRemover {
             _sln = _sln.WithDocumentSyntaxRoot(doc.Id, removed);
         }
 
-        return (_sln, _sln.GetProject(_proj.Id) ?? throw new Exception("Should never be null"));
+        return _sln;
+    }
+    
+    /// Add alive annotation to known alive classes
+    async Task Init() {
+        foreach(var doc in _proj.Documents) {
+            var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
+            if(syntax is null) { continue; }
+            var finder = new MainProgramFinder();
+            syntax.Accept(finder);
+            if(finder.ProgramDecl is not null) {
+                var symbol = await GetSymbol(finder.ProgramDecl);
+                if(symbol is not null) {
+                    _alive.Add(symbol, true);
+                    break;
+                }
+            }
+        }
+    }
+
+    class MainProgramFinder: CSharpSyntaxWalker {
+        public ClassDeclarationSyntax? ProgramDecl = null;
+
+        public MainProgramFinder() {}
+
+        public override void Visit(SyntaxNode? node) {
+            if(ProgramDecl != null) { return; }
+            base.Visit(node);
+        }
+
+        public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
+            if(
+                    node.Identifier.ValueText.Equals("Program") &&
+                    (
+                        node
+                            .BaseList
+                            ?.Types
+                            .AsEnumerable()
+                            .Any(ty => (ty.Type as IdentifierNameSyntax)?.Identifier.ValueText.Equals("MyGridProgram") ?? false)
+                        ?? false
+                    )
+            ) {
+                ProgramDecl = node;
+            }
+            
+            base.Visit(node);
+        }
     }
 
     public SyntaxNode? Run(CSharpSyntaxNode node) =>
@@ -43,10 +91,10 @@ public class DeadCodeRemover {
         }
 
         public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node) =>
-            Referenced(node) ? node : null;
+            Referenced(node) ? base.Visit(node) : null;
 
         public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node) =>
-            Referenced(node) ? node : null;
+            Referenced(node) ? base.Visit(node) : null;
 
         bool Referenced(CSharpSyntaxNode node) =>
             Task.Run(async () => await _parent.IsSyntaxReferenced(node)).Result;

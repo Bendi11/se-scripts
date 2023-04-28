@@ -20,6 +20,15 @@ internal class Program {
 
         [Option('r', "rename", Required = false, HelpText = "Rename symbols to reduce output size further")]
         public bool Rename { get; set; }
+
+        [Option(
+            'd',
+            "remove-dead",
+            Required = false,
+            HelpText = "Remove dead code not referenced by the Program class",
+            Default = true
+        )]
+        public bool RemoveDead { get; set; }
     }
 
     static async Task Main(string[] args) {

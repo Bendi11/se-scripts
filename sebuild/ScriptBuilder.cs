@@ -37,22 +37,28 @@ public class ScriptWorkspaceContext: IDisposable {
         workspace.Dispose();
     }
     
-    async public Task<List<CSharpSyntaxNode>> BuildProject(string name, bool rename = false) {
+    async public Task<List<CSharpSyntaxNode>> BuildProject(string name, bool rename = false, bool eliminateDead = true) {
         var project = sln.Projects.SingleOrDefault(p => p.Name == name) ?? throw new Exception($"Solution does not contain a project with name ${name}");
-        return await BuildProject(project.Id, rename);
+        return await BuildProject(project.Id, rename, eliminateDead);
     }
 
     
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
-    async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false) {
+    async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false, bool eliminateDead = true) {
         var docs = new List<Document>();
+        Solution final = sln;
         if(rename) {
-            var mini = await RenameAllSymbols(sln, p, docs);
+            final = await RenameAllSymbols(final, p, docs);
             loadedDocs.Clear();
-            GetDocuments(mini, p, docs);
-        } else {
-            GetDocuments(sln, p, docs);
         }
+
+        if(eliminateDead) {
+            final = await DeadCodeRemover.Build(
+                final,
+                final.GetProject(p) ?? throw new Exception($"Failed to get project with ID {p}")
+            );
+        }
+
         foreach(var diag in workspace.Diagnostics) {
             Console.WriteLine(diag);
         }
