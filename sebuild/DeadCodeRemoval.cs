@@ -6,7 +6,7 @@ using Microsoft.CodeAnalysis.FindSymbols;
 namespace SeBuild;
 
 public class DeadCodeRemover {
-    Dictionary<ISymbol, bool> _alive = new Dictionary<ISymbol, bool>();
+    Dictionary<ISymbol, bool> _alive = new Dictionary<ISymbol, bool>(SymbolEqualityComparer.Default);
     Solution _sln;
 
     Project _proj;
@@ -16,13 +16,13 @@ public class DeadCodeRemover {
         _proj = proj;
     }
 
-    public static async Task<Solution> Build(Solution sln, Project proj) =>
-        await new DeadCodeRemover(sln, proj).Build();
+    public static async Task<Solution> Build(Solution sln, Project proj, List<Document> docs) =>
+        await new DeadCodeRemover(sln, proj).Build(docs);
 
-    public async Task<Solution> Build() {
+    public async Task<Solution> Build(IEnumerable<Document> docs) {
         _alive.Clear();
         await Init();
-        foreach(var doc in _proj.Documents) {
+        foreach(var doc in docs) {
             var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
             if(syntax is null) { continue; }
             
@@ -57,8 +57,7 @@ public class DeadCodeRemover {
         public MainProgramFinder() {}
 
         public override void Visit(SyntaxNode? node) {
-            if(ProgramDecl != null) { return; }
-            base.Visit(node);
+            if(ProgramDecl is null) { base.Visit(node); }
         }
 
         public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
@@ -76,7 +75,7 @@ public class DeadCodeRemover {
                 ProgramDecl = node;
             }
             
-            base.Visit(node);
+            base.VisitClassDeclaration(node);
         }
     }
 
@@ -91,13 +90,19 @@ public class DeadCodeRemover {
         }
 
         public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node) =>
-            Referenced(node) ? base.Visit(node) : null;
+            Referenced(node) ? base.VisitMethodDeclaration(node) : null;
 
         public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node) =>
-            Referenced(node) ? base.Visit(node) : null;
+            Referenced(node) ? base.VisitClassDeclaration(node) : null;
 
-        bool Referenced(CSharpSyntaxNode node) =>
-            Task.Run(async () => await _parent.IsSyntaxReferenced(node)).Result;
+        bool Referenced(CSharpSyntaxNode node) {
+            bool referenced = Task.Run(async () => await _parent.IsSyntaxReferenced(node)).Result;
+            if(!referenced) {
+                Console.WriteLine($"Eliminating dead code {node.ToFullString()}");
+            }
+
+            return referenced;
+        }
     }
 
     async Task<ISymbol?> GetSymbol(SyntaxNode node) {

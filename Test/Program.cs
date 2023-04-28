@@ -2,6 +2,10 @@ using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
 namespace IngameScript {
+    class TestingREMOVETHIS {
+
+    }
+
     partial class Program: MyGridProgram {
         Autopilot _au;
          

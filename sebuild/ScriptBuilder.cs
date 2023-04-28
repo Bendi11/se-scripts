@@ -42,7 +42,6 @@ public class ScriptWorkspaceContext: IDisposable {
         return await BuildProject(project.Id, rename, eliminateDead);
     }
 
-    
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
     async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false, bool eliminateDead = true) {
         var docs = new List<Document>();
@@ -53,10 +52,13 @@ public class ScriptWorkspaceContext: IDisposable {
         }
 
         if(eliminateDead) {
+            GetDocuments(final, p, docs);
             final = await DeadCodeRemover.Build(
                 final,
-                final.GetProject(p) ?? throw new Exception($"Failed to get project with ID {p}")
+                final.GetProject(p) ?? throw new Exception($"Failed to get project with ID {p}"),
+                docs
             );
+            loadedDocs.Clear();
         }
 
         foreach(var diag in workspace.Diagnostics) {
