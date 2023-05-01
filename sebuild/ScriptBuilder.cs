@@ -47,19 +47,21 @@ public class ScriptWorkspaceContext: IDisposable {
     async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false, bool eliminateDead = false) {
         var docs = new List<Document>();
         Solution final = _sln;
-        if(rename) {
-            final = await RenameAllSymbols(final, p, docs, new HashSet<ProjectId>());
-        }
         
-        GetDocuments(final, p, docs);
         if(eliminateDead) {
+            GetDocuments(final, p, docs);
             final = await DeadCodeRemover.Build(
                 final,
                 final.GetProject(p) ?? throw new Exception($"Failed to get project with ID {p}"),
                 docs
             );
-            GetDocuments(final, p, docs);
         }
+
+        if(rename) {
+            final = await RenameAllSymbols(final, p, new HashSet<ProjectId>());
+        }
+
+        GetDocuments(final, p, docs);
 
         foreach(var diag in workspace.Diagnostics) {
             Console.WriteLine(diag);
@@ -72,7 +74,7 @@ public class ScriptWorkspaceContext: IDisposable {
     /// <summary>
     /// Minify a project and all dependencies of the project
     /// </summary>
-    async private Task<Solution> RenameAllSymbols(Solution sol, ProjectId p, List<Document> docs, HashSet<ProjectId> renamedProjects, Renamer? other = null) {
+    async private Task<Solution> RenameAllSymbols(Solution sol, ProjectId p, HashSet<ProjectId> renamedProjects, Renamer? other = null) {
         if(renamedProjects.Contains(p)) return sol; 
         var mini = other is null ? new Renamer(workspace, sol, p) : new Renamer(workspace, sol, p, other);
         sol = await mini.Run();
@@ -81,7 +83,7 @@ public class ScriptWorkspaceContext: IDisposable {
         renamedProjects.Add(p);
 
         foreach(var reference in newproj.ProjectReferences) {
-            sol = await RenameAllSymbols(sol, reference.ProjectId, docs, renamedProjects, mini);
+            sol = await RenameAllSymbols(sol, reference.ProjectId, renamedProjects, mini);
         }
 
         return sol;
