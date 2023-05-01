@@ -76,14 +76,14 @@ public class ScriptWorkspaceContext: IDisposable {
     /// </summary>
     async private Task<Solution> RenameAllSymbols(Solution sol, ProjectId p, HashSet<ProjectId> renamedProjects, Renamer? other = null) {
         if(renamedProjects.Contains(p)) return sol; 
-        var mini = other is null ? new Renamer(workspace, sol, p) : new Renamer(workspace, sol, p, other);
-        sol = await mini.Run();
-        var newproj = sol.GetProject(p);
+        var renamer = other is null ? new Renamer(workspace, sol, p) : new Renamer(workspace, sol, p, other);
+        sol = await renamer.Run();
+        var newproj = sol.GetProject(p) ?? throw new Exception($"Internal: renamer removed project {p}");
         
         renamedProjects.Add(p);
 
         foreach(var reference in newproj.ProjectReferences) {
-            sol = await RenameAllSymbols(sol, reference.ProjectId, renamedProjects, mini);
+            sol = await RenameAllSymbols(sol, reference.ProjectId, renamedProjects, renamer);
         }
 
         return sol;
@@ -134,11 +134,19 @@ public class ScriptWorkspaceContext: IDisposable {
         Console.WriteLine($"Reading solution file {slnPath}");
         
         _sln = await workspace.OpenSolutionAsync(slnPath);
-        var envProject = _sln.Projects.SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file"); 
+        var envProject = _sln
+            .Projects
+            .SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file"); 
 
         // Now we use the MSBuild apis to load and evaluate our project file
-        using var xmlReader = XmlReader.Create(File.OpenRead(envProject.FilePath ?? throw new Exception("Failed to locate env.csproj file")));
-        ProjectRootElement root = ProjectRootElement.Create(xmlReader, new MSBuildProjectCollection(), preserveFormatting: true);
+        using var xmlReader = XmlReader.Create(
+            File.OpenRead(envProject.FilePath ?? throw new Exception("Failed to locate env.csproj file"))
+        );
+        ProjectRootElement root = ProjectRootElement.Create(
+            xmlReader,
+            new MSBuildProjectCollection(),
+            preserveFormatting: true
+        );
         MSBuildProject msbuildProject = new MSBuildProject(root);
 
         scriptDir = msbuildProject.GetPropertyValue("SpaceEngineersScript");

@@ -1,1 +1,69 @@
-Seeker A;IMySensorBlock B;e C;IMyShipConnector D;Ó E;List<IMyWarhead>F;uint G=1;float H=0;public Program(){ć.ċ(Me.GetSurface(0));try{A=new Seeker(GridTerminalSystem,Me,Runtime);List<IMyGyro>I=new List<IMyGyro>();GridTerminalSystem.GetBlocksOfType(I,(J)=>J.IsSameConstructAs(Me));C=new GyroController(I,A.Cam);C.k=new Ä(0.5f,0f,0f);MyIni K=new MyIni();if(K.TryParse(Me.CustomData)){float L=(float)K.Get("seeker","mul").ToDouble();G=K.Get("seeker","scans").ToUInt32();A.ScanAzimuth=(float)K.Get("seeker","az").ToDouble(A.ScanAzimuth);A.ScanElevation=(float)K.Get("seeker","el").ToDouble(A.ScanElevation);A.ScanAzimuthRange=(float)K.Get("seeker","azr").ToDouble(A.ScanAzimuthRange);A.ScanElevationRange=(float)K.Get("seeker","elr").ToDouble(A.ScanElevationRange);A.ScanSpeedMultiplier=L;}F=new List<IMyWarhead>();GridTerminalSystem.GetBlocksOfType(F,(M)=>M.IsSameConstructAs(Me));foreach(var N in F){N.IsArmed=true;}E=new Thrust(GridTerminalSystem,A.Cam,1506);E.Û=10f;List<IMySensorBlock>O=new List<IMySensorBlock>();GridTerminalSystem.GetBlocksOfType(O,(P)=>P.IsSameConstructAs(Me)&&MyIni.HasSection(P.CustomData,"prox"));if(O.Count!=1){ć.ď($"Expecting 1 sensor with a [prox] tag, found {O.Count}");}B=O.First();List<IMyShipConnector>Q=new List<IMyShipConnector>();GridTerminalSystem.GetBlocksOfType(Q,(R)=>R.IsSameConstructAs(Me)&&MyIni.HasSection(R.CustomData,"hardpoint"));if(Q.Count!=1){ć.ď($"Expecting 1 connector with a [hardpoint] tag, found {Q.Count}");}D=Q.First();B.DetectEnemy=B.DetectAsteroids=B.DetectNeutral=B.DetectPlayers=B.DetectLargeShips=B.DetectSmallShips=B.DetectStations=B.DetectFloatingObjects=true;B.BackExtend=B.RightExtend=B.LeftExtend=B.BottomExtend=B.TopExtend=B.BottomExtend=2;A.Seek.Begin();Runtime.UpdateFrequency|=UpdateFrequency.Once;}catch(Exception e){ć.ď(e.Message);}}public void Save(){}public void Main(string S,UpdateType T){try{if(T.HasFlag(UpdateType.Once)){A.Tick();C.t();E.í();for(uint U=0;U<G;++U){try{A.Seek.Poll();}catch(Exception e){ć.ď(e.Message);}}if(A.Locked&&!D.IsConnected){C.p();if(!E.Enabled){E.Õ=Vector3D.One*500;Runtime.UpdateFrequency|=UpdateFrequency.Once;return;}E.Enabled=true;var V=A.Tracked.body.Position;var W=Vector3.Distance(V,A.Cam.GetPosition());float X=(float)(A.Ticks-A.Tracked.tick)*0.016f;if(B.IsActive&&B.LastDetectedEntity.EntityId==A.Tracked.body.EntityId||(!B.IsWorking&&W<5)){foreach(var Y in F){Y.Detonate();}}var Z=A.Tracked.body.Velocity-A.Cam.CubeGrid.LinearVelocity;var a=A.Tracked.body.Position-A.Cam.GetPosition();var b=(a.Cross(Z))/(a.Dot(a));var c=5;var d=(c*Z).Cross(b);E.VelWorld+=d/0.016f;C.g=Vector3D.Normalize(d);}else{E.Enabled=true;E.Õ=Vector3D.Zero;C.g=-A.Cam.CubeGrid.LinearVelocity;}Runtime.UpdateFrequency|=UpdateFrequency.Once;}}catch(Exception e){ć.ď(e.ToString());E.Enabled=false;C.r();}}public class e{public List<IMyGyro>f;public Vector3 g=Vector3.UnitX;public Vector3 OrientLocal{get{return Vector3.TransformNormal(g,Matrix.Transpose(h.WorldMatrix));}set{g=Vector3.TransformNormal(value,h.WorldMatrix);}}IMyTerminalBlock h;Vector3 i;float j=0F;public Ä k=new Ä(0.2f,0f,0f);public float l=0.0001F;public bool IsOriented{get{return Math.Abs(j)<l;}}public e(List<IMyGyro>m,IMyTerminalBlock n){f=m;h=n;Matrix o;h.Orientation.GetMatrix(out o);i=o.Forward;r();}public void p(){foreach(var q in f){q.GyroOverride=true;}}public void r(){foreach(var s in f){s.GyroOverride=false;}}public float t(){Matrix u;var v=Á();var w=k.Ð(v);foreach(var x in f){x.Orientation.GetMatrix(out u);var y=Vector3.TransformNormal(i,Matrix.Transpose(u));var z=Vector3.TransformNormal(g,MatrixD.Transpose(x.WorldMatrix));var À=Vector3.Cross(y,z);À.Normalize();À=-À*w;x.Pitch=À.X;x.Yaw=À.Y;x.Roll=À.Z;}return j;}private float Á()=>j=Â(h.WorldMatrix.GetOrientation().Forward,g);private float Â(Vector3 a,Vector3 b){a.Normalize();b.Normalize();var Ã=(float)Math.Acos(a.Dot(b));if(Ã==0){return 0.00001F;}if(float.IsNaN(Ã)){return-0.00001F;}else{return Ã;}}}public sealed class Ä{float P{get;set;}float I{get;set;}float D{get;set;}float Å=0;float Æ;float Ç;float È=float.NaN;float É=0F;public Ä(float Ê,float Ë,float Ì,float Í=0F,float Î=0.016F){P=Ê;I=Ë;D=Ì;Æ=Î;Ç=1f/Æ;É=Í;}public Ä(Ä Ï){P=Ï.P;I=Ï.I;D=Ï.D;Å=Ï.Å;Æ=Ï.Æ;È=Ï.È;É=Ï.É;}public float Ð(float Ñ){Å+=Ñ;Å*=(1F-É);float i=Å*(1F-É)+Ñ*Æ;float d=(Ñ-È)*Ç;if(float.IsNaN(È)){d=0;}float Ò=(P*Ñ)+(I*i)+(D*d);È=Ñ;return Ò;}}public class Ó{public MyGridProgram Ô;public Vector3 Õ;public Vector3 VelWorld{get{return Vector3.TransformNormal(Õ,Ú.WorldMatrix);}set{Õ=Vector3.TransformNormal(value,MatrixD.Transpose(Ú.WorldMatrix));}}bool Ö=false;public bool Enabled{get{return Ö;}set{Ö=value;if(!value){foreach(var Ø in Ý)Ø.ThrustOverride=0;}else{ë();}}}public IMyShipController Ù=null;public IMyTerminalBlock Ú;public float Û=0.7F;float Ü;List<IMyThrust>Ý=new List<IMyThrust>();List<IMyThrust>Þ,ß,à,á,â,ã;public Ó(IMyGridTerminalSystem ä,IMyTerminalBlock å,float æ){Ú=å;Func<Vector3D,List<IMyThrust>>ç=(dir)=>{var list=new List<IMyThrust>();ä.GetBlocksOfType(list,thrust=>thrust.WorldMatrix.Backward==dir);return list;};ä.GetBlocksOfType(Ý);var è=Ú.WorldMatrix;â=ç(è.Forward);ã=ç(è.Backward);Þ=ç(è.Right);ß=ç(è.Left);à=ç(è.Up);á=ç(è.Down);ë(æ);}public Ó(IMyGridTerminalSystem é,IMyShipController ê):this(é,ê as IMyTerminalBlock,ê.CalculateShipMass().TotalMass){this.Ù=ê;}public void ë()=>Ü=Ù!=null?Ù.CalculateShipMass().TotalMass:Ü;public void ë(float ì)=>Ü=ì;public void í(){if(!Ö)return;var î=(Õ-Vector3D.TransformNormal(Ú.CubeGrid.LinearVelocity,MatrixD.Transpose(Ú.WorldMatrix)))*Ü*Û;ï(Þ,î.X);ï(ß,-î.X);ï(à,î.Y);ï(á,-î.Y);ï(ã,î.Z);ï(â,-î.Z);}private void ï(List<IMyThrust>ð,double ñ){foreach(var ò in ð){ò.ThrustOverride=Math.Max((float)ñ,0.001F);ñ-=ò.MaxEffectiveThrust;}}}public struct Nil{public readonly static Nil ó;}public static class ô{public static double õ=0;static List<IEnumerable>ö=new List<IEnumerable>();public static void Ā(double ā){for(int i=0;i<ö.Count;++i){bool Ă=ö[i].GetEnumerator().MoveNext();if(!Ă){ö[i]=null;}}}public static void ă(IEnumerable Ą){ö.Add(Ą);}public static T ą<T>(IEnumerable<T>Ć)=>Ć.GetEnumerator().Current;}public static class ć{static IMyTextSurface Ĉ;static int ĉ=0;static Vector2 Ċ;public static void ċ(IMyTextSurface Č){Ĉ=Č;Ĉ.WriteText("",false);Ĉ.BackgroundColor=Color.Black;Ĉ.ContentType=ContentType.TEXT_AND_IMAGE;Ĉ.Font="Monospace";Ĉ.FontColor=Color.Lime;Ĉ.FontSize=0.7F;Ĉ.TextPadding=0F;var č=new StringBuilder();č.Append('A');var Ď=Ĉ.MeasureStringInPixels(č,"Monospace",Ĉ.FontSize);Ċ=(Ĉ.SurfaceSize-Ď)/Ď;}public static void ď(string Đ){ĕ("[FTL]"+Đ);throw new Exception(Đ);}public static void đ(string Ē)=>ĕ("[ERR]"+Ē);public static void ē(string Ĕ)=>ĕ("[WRN]"+Ĕ);public static void ĕ(string Ė){if(ĉ>=Ċ.Y){Ĉ.WriteText("",false);ĉ=0;}while(Ė.Length>0){int ė=Math.Min((int)Ċ.X,Ė.Length);Ĉ.WriteText(Ė.Substring(0,ė),true);Ė=Ė.Substring(ė);Ĉ.WriteText("\n",true);ĉ+=1;}}}public class Ę{public IMyTextSurface ę;public bool Ě=true;readonly Vector2 ě,Ĝ;readonly StringBuilder ĝ=new StringBuilder();const string Ğ="Monospace";int ğ=0;public float FitLines{set{ę.FontSize=FitLines/value;}get{return ě.Y/Ĝ.Y;}}public float FitCols{set{ę.FontSize=FitCols/value;}get{return ě.X/Ĝ.X;}}public void Ġ(float ġ,float Ģ){var ģ=FitLines/ġ;var Ĥ=FitCols/Ģ;ę.FontSize=Math.Min(ģ,Ĥ);}public Ę(IMyTextSurface ĥ){ĝ.Append('A');ę=ĥ;ę.Font=Ğ;ę.FontSize=1;ę.TextPadding=0F;Ĝ=ę.MeasureStringInPixels(ĝ,Ğ,1);}public void Ħ(string ħ){if(ğ>=ě.Y){ę.WriteText("",false);ğ=0;}do{int Ĩ=Math.Min((int)ě.X,ħ.Length);ę.WriteText(ħ.Substring(0,Ĩ),true);ħ=ħ.Substring(Ĩ);ę.WriteText("\n",true);ğ+=1;}while(Ě&&(ħ.Length>=0));}}
+        Sendy<int> i;
+        public Program() {
+            var cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
+            Runtime.UpdateFrequency |= UpdateFrequency.Update10;
+        }
+
+        public void Save() {
+            
+        }
+
+        public void Main(string argument, UpdateType updateSource) {
+            i.SendRequest(2, 3);
+            Log.Put("TEST");
+            if(!updateSource.HasFlag(UpdateType.Update10)) {
+            }
+        }
+    /// <summary>
+    /// General purpose unicast communications protocol with boilerplate
+    /// reducing methods to register actions for specific requests
+    /// </summary>
+    public abstract class Sendy<Method> {
+        public readonly IMyIntergridCommunicationSystem IGC;
+        public IMyBroadcastListener Broadcast = null;
+
+        long _msgNo = 1;
+        Dictionary<long, Nullable<Response>> _waiting;
+
+        public const string
+            REQUEST = "req",
+            RESPONSE = "resp";
+
+        public struct Response {
+            public long Address;
+            public object Data;
+        }
+
+        public Sendy(IMyIntergridCommunicationSystem _IGC) {
+            IGC = _IGC;
+        }
+
+        public long SendRequest(long addr, Method method, object data = null) {
+            long msgNo = _msgNo++;
+            IGC.SendUnicastMessage(addr, REQUEST, MyTuple.Create(method, msgNo, data));
+            return msgNo;
+        }
+    }
+    /// <summary>
+    /// Simple logging facility supporting many screen sizes and automatic text wrapping
+    /// </summary>
+    public static class Log {
+        static IMyTextSurface _term;
+        static int _lines = 0;
+        static Vector2 BOUNDS;
+
+        public static void Put(string msg) {
+            if(_lines >= BOUNDS.Y) {
+                _term.WriteText("", false);
+                _lines = 0;
+            }
+            
+            while(msg.Length > 0) {
+                int len = Math.Min((int)BOUNDS.X, msg.Length);
+                _term.WriteText(msg.Substring(0, len), true);
+                msg = msg.Substring(len);
+                _term.WriteText("\n", true);
+                _lines += 1;
+            }
+        }
+    }

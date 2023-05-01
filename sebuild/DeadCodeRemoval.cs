@@ -149,8 +149,7 @@ public class DeadCodeRemover {
 
                 var node = sourceTree?.FindNode(loc.Location.SourceSpan);
 
-                Console.WriteLine($"{sym.Name} ref @ {loc.Document.Project.Name}: {node}");
-                if(loc.Document.Id == _aliveDoc.Id) {
+                if(_aliveDoc is not null && loc.Document.Id == _aliveDoc.Id) {
                     return _alive[sym] = true;
                 }
                 if(node is null) { continue; }

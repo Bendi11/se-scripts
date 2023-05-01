@@ -111,15 +111,6 @@ public class Renamer {
             _project = project;
         }
 
-        private bool CanSymbolBeRenamed(ISymbol symbol) =>
-            false &&
-                        !symbol.IsExtern &&
-                        symbol.CanBeReferencedByName &&
-                        !Renamed.Contains(symbol.Name) &&
-                        !(symbol is INamedTypeSymbol && (symbol.Name.Equals("Program"))) ||
-                        !(symbol is IMethodSymbol && (symbol.Name.Equals("Save") || symbol.Name.Equals("Main")));
-
-
         async public Task<(ISymbol, SemanticModel)?> Symbol() {
             var project = _final.GetProject(_project)
                 ?? throw new Exception($"Failed to locate project with ID {_project}");
@@ -130,25 +121,12 @@ public class Renamer {
                     ?? throw new Exception($"Failed to get syntax tree for document {doc.FilePath}");
                 var sema = comp.GetSemanticModel(tree)
                     ?? throw new Exception($"Failed to get semantic model for document {doc.FilePath}");
-                
-                foreach(var sym in sema.LookupSymbols(0)) {
-                    if(CanSymbolBeRenamed(sym)) { return (sym, sema); }
+               
+                var walker = new RenamerWalker(Renamed, sema);
+                walker.Visit(await tree.GetRootAsync());
 
-                    ISymbol? member = sym switch {
-                        INamespaceOrTypeSymbol ty => ty.GetMembers().Where(CanSymbolBeRenamed).FirstOrDefault(),
-                        ILocalSymbol v => (CanSymbolBeRenamed(v) ? v : null),
-                        IFieldSymbol f => (CanSymbolBeRenamed(f) ? f : null),
-                        IMethodSymbol mth => await Task.Run(() => {
-                            var param = mth.Parameters.Where(CanSymbolBeRenamed).FirstOrDefault() as ISymbol;
-                            if(param is null) {
-                                param = mth.TypeParameters.Where(CanSymbolBeRenamed).FirstOrDefault() as ISymbol;
-                            }
-                            return param;
-                        }),
-                        var _ => null,
-                    };
-
-                    if(member is not null) { return (member, sema); }
+                if(walker.ToRename != null) {
+                    return (walker.ToRename, sema);
                 }
             }
 
@@ -230,17 +208,16 @@ public class Renamer {
                 var symbol = _sema
                     .GetDeclaredSymbol(node)
                     ?? throw new Exception($"Failed to get symbol for syntax {node.GetText()}");
-                if(
-                        (symbol.IsExtern) ||
-                        (!symbol.CanBeReferencedByName) ||
-                        (symbol is INamedTypeSymbol && (symbol.Name.Equals("Program"))) ||
-                        (symbol is IMethodSymbol) && (symbol.Name.Equals("Save") || symbol.Name.Equals("Main"))
-                ) {
-                    return;
-                }
 
-                if(!_renamed.Contains(symbol.Name)) {
-                    Console.WriteLine($"TYPE: {symbol.Kind}");
+                if(symbol.Kind != SymbolKind.Namespace &&
+                    !_renamed.Contains(symbol.Name) &&
+                    !symbol.IsImplicitlyDeclared &&
+                    symbol.Locations.Any((loc) => loc.IsInSource) &&
+                    !symbol.IsExtern &&
+                    symbol.CanBeReferencedByName &&
+                    !(symbol is INamedTypeSymbol && (symbol.Name.Equals("Program"))) &&
+                    !(symbol is IMethodSymbol && (symbol.Name.Equals("Save") || symbol.Name.Equals("Main")))
+                ) {
                     ToRename = symbol;
                     return;
                 }
