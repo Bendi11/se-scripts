@@ -19,8 +19,7 @@ public class ScriptWorkspaceContext: IDisposable {
 
     static ScriptWorkspaceContext() { MSBuildLocator.RegisterDefaults(); }
 
-    Solution sln;
-    private HashSet<ProjectId> loadedDocs = new HashSet<ProjectId>();
+    Solution _sln;
     
     /// <summary>Create a new <c>ScriptWorkspaceContext</c></summary>
     /// <param name="path">
@@ -37,28 +36,29 @@ public class ScriptWorkspaceContext: IDisposable {
         workspace.Dispose();
     }
     
-    async public Task<List<CSharpSyntaxNode>> BuildProject(string name, bool rename = false, bool eliminateDead = true) {
-        var project = sln.Projects.SingleOrDefault(p => p.Name == name) ?? throw new Exception($"Solution does not contain a project with name ${name}");
+    async public Task<List<CSharpSyntaxNode>> BuildProject(string name, bool rename = false, bool eliminateDead = false) {
+        var project = _sln
+            .Projects
+            .SingleOrDefault(p => p.Name == name) ?? throw new Exception($"Solution does not contain a project with name ${name}");
         return await BuildProject(project.Id, rename, eliminateDead);
     }
 
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
-    async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false, bool eliminateDead = true) {
+    async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false, bool eliminateDead = false) {
         var docs = new List<Document>();
-        Solution final = sln;
+        Solution final = _sln;
         if(rename) {
-            final = await RenameAllSymbols(final, p, docs);
-            loadedDocs.Clear();
+            final = await RenameAllSymbols(final, p, docs, new HashSet<ProjectId>());
         }
-
+        
+        GetDocuments(final, p, docs);
         if(eliminateDead) {
-            GetDocuments(final, p, docs);
             final = await DeadCodeRemover.Build(
                 final,
                 final.GetProject(p) ?? throw new Exception($"Failed to get project with ID {p}"),
                 docs
             );
-            loadedDocs.Clear();
+            GetDocuments(final, p, docs);
         }
 
         foreach(var diag in workspace.Diagnostics) {
@@ -67,28 +67,34 @@ public class ScriptWorkspaceContext: IDisposable {
 
         return await Preprocessor.Build(docs);
     }
+
     
     /// <summary>
     /// Minify a project and all dependencies of the project
     /// </summary>
-    async private Task<Solution> RenameAllSymbols(Solution sol, ProjectId p, List<Document> docs, Renamer? other = null) {
-        if(loadedDocs.Contains(p)) return sol; 
+    async private Task<Solution> RenameAllSymbols(Solution sol, ProjectId p, List<Document> docs, HashSet<ProjectId> renamedProjects, Renamer? other = null) {
+        if(renamedProjects.Contains(p)) return sol; 
         var mini = other is null ? new Renamer(workspace, sol, p) : new Renamer(workspace, sol, p, other);
-        var (minisol, newproj) = await mini.Run();
-        sol = minisol;
+        sol = await mini.Run();
+        var newproj = sol.GetProject(p);
         
-        loadedDocs.Add(p);
+        renamedProjects.Add(p);
 
         foreach(var reference in newproj.ProjectReferences) {
-            sol = await RenameAllSymbols(sol, reference.ProjectId, docs, mini);
+            sol = await RenameAllSymbols(sol, reference.ProjectId, docs, renamedProjects, mini);
         }
 
         return sol;
     }
 
     private void GetDocuments(Solution sln, ProjectId id, List<Document> docs) {
-        if(loadedDocs.Contains(id)) { return; }
-        loadedDocs.Add(id);
+        docs.Clear();
+        GetDocuments(sln, id, docs, new HashSet<ProjectId>());
+    }
+
+    private void GetDocuments(Solution sln, ProjectId id, List<Document> docs, HashSet<ProjectId> loadedProjects) {
+        if(loadedProjects.Contains(id)) { return; }
+        loadedProjects.Add(id);
 
         var proj = sln.GetProject(id)
             ?? throw new Exception($"Failed to find project in solution {sln.FilePath} with ID {id}");
@@ -97,7 +103,7 @@ public class ScriptWorkspaceContext: IDisposable {
         }
 
         foreach(var dep in proj.ProjectReferences) {
-            GetDocuments(sln, dep.ProjectId, docs);
+            GetDocuments(sln, dep.ProjectId, docs, loadedProjects);
         }
     }
     
@@ -125,8 +131,8 @@ public class ScriptWorkspaceContext: IDisposable {
 
         Console.WriteLine($"Reading solution file {slnPath}");
         
-        sln = await workspace.OpenSolutionAsync(slnPath);
-        var envProject = sln.Projects.SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file"); 
+        _sln = await workspace.OpenSolutionAsync(slnPath);
+        var envProject = _sln.Projects.SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file"); 
 
         // Now we use the MSBuild apis to load and evaluate our project file
         using var xmlReader = XmlReader.Create(File.OpenRead(envProject.FilePath ?? throw new Exception("Failed to locate env.csproj file")));

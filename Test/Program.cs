@@ -2,18 +2,10 @@ using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
 namespace IngameScript {
-    class TestingREMOVETHIS {
-
-    }
-
     partial class Program: MyGridProgram {
-        Autopilot _au;
-         
+        Sendy<int> i;
         public Program() {
             var cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
-            _au = new Autopilot(GridTerminalSystem, cockpit);
-            _au.Enabled = false;
-            _au.PositionWorld = cockpit.GetPosition() + Vector3D.Up * 10;
             Runtime.UpdateFrequency |= UpdateFrequency.Update10;
         }
 
@@ -22,10 +14,10 @@ namespace IngameScript {
         }
 
         public void Main(string argument, UpdateType updateSource) {
+            i.SendRequest(2, 3);
+            Log.Put("TEST");
             if(!updateSource.HasFlag(UpdateType.Update10)) {
-                _au.Enabled = !_au.Enabled;
             }
-            _au.Step();
         }
     }
 }

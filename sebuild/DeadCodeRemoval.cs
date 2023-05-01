@@ -8,7 +8,7 @@ namespace SeBuild;
 public class DeadCodeRemover {
     Dictionary<ISymbol, bool> _alive = new Dictionary<ISymbol, bool>(SymbolEqualityComparer.Default);
     Solution _sln;
-
+    Document? _aliveDoc = null;
     Project _proj;
 
     public DeadCodeRemover(Solution sln, Project proj) {
@@ -23,12 +23,13 @@ public class DeadCodeRemover {
         _alive.Clear();
         await Init();
         foreach(var doc in docs) {
+            _proj = doc.Project;
             var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
             if(syntax is null) { continue; }
             
             var removed = Run(syntax);
             if(removed is null) { continue; }
-            _sln = _sln.WithDocumentSyntaxRoot(doc.Id, removed);
+            _sln = _sln.WithDocumentSyntaxRoot(doc.Id, removed, PreservationMode.PreserveIdentity);
         }
 
         return _sln;
@@ -45,6 +46,14 @@ public class DeadCodeRemover {
                 var symbol = await GetSymbol(finder.ProgramDecl);
                 if(symbol is not null) {
                     _alive.Add(symbol, true);
+                    _aliveDoc = doc;
+                    var decl = symbol as INamedTypeSymbol;
+                    if(decl is not null) {
+                        foreach(var member in decl.GetMembers()) {
+                            Console.WriteLine($"alive: {member.Name}");
+                            _alive.Add(member, true);
+                        }
+                    }
                     break;
                 }
             }
@@ -73,6 +82,7 @@ public class DeadCodeRemover {
                     )
             ) {
                 ProgramDecl = node;
+                return;
             }
             
             base.VisitClassDeclaration(node);
@@ -92,23 +102,31 @@ public class DeadCodeRemover {
         public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node) =>
             Referenced(node) ? base.VisitMethodDeclaration(node) : null;
 
+        public override SyntaxNode? VisitFieldDeclaration(FieldDeclarationSyntax node) =>
+            Referenced(node) ? base.VisitFieldDeclaration(node) : null;
+        
+        public override SyntaxNode? VisitPropertyDeclaration(PropertyDeclarationSyntax node) =>
+            Referenced(node) ? base.VisitPropertyDeclaration(node) : null;
+
         public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node) =>
             Referenced(node) ? base.VisitClassDeclaration(node) : null;
+
+        public override SyntaxNode? VisitStructDeclaration(StructDeclarationSyntax node) =>
+            Referenced(node) ? base.VisitStructDeclaration(node) : null;
 
         bool Referenced(CSharpSyntaxNode node) {
             bool referenced = Task.Run(async () => await _parent.IsSyntaxReferenced(node)).Result;
             if(!referenced) {
-                Console.WriteLine($"Eliminating dead code {node.ToFullString()}");
+                Console.WriteLine($"Eliminating dead code {node.FullSpan}");
             }
 
             return referenced;
         }
     }
 
-    async Task<ISymbol?> GetSymbol(SyntaxNode node) {
-        var comp = await _proj.GetCompilationAsync();
+    async Task<ISymbol?> GetSymbol(SyntaxNode node, Project? proj = null) {
+        var comp = await (proj ?? _proj).GetCompilationAsync();
         var sema = comp?.GetSemanticModel(node.SyntaxTree);
-
         return sema?.GetDeclaredSymbol(node);
     }
 
@@ -120,7 +138,7 @@ public class DeadCodeRemover {
     public async Task<bool> IsSymbolReferenced(ISymbol sym) {
         if(_alive.ContainsKey(sym)) { return _alive[sym]; }
         
-        bool alive = false;
+        _alive.Add(sym, false);
         var refs = await SymbolFinder.FindReferencesAsync(sym, _sln);
         foreach(var reference in refs) {
             foreach(var loc in reference.Locations) {
@@ -130,16 +148,28 @@ public class DeadCodeRemover {
                 var sourceTree = await sourceNode.GetRootAsync();
 
                 var node = sourceTree?.FindNode(loc.Location.SourceSpan);
+
+                Console.WriteLine($"{sym.Name} ref @ {loc.Document.Project.Name}: {node}");
+                if(loc.Document.Id == _aliveDoc.Id) {
+                    return _alive[sym] = true;
+                }
                 if(node is null) { continue; }
-    
-                var symbol = await GetSymbol(node); 
-                if(symbol is not null && (alive = await IsSymbolReferenced(symbol))) {
-                    break;
+                ISymbol? symbol = null;
+
+                while(node is not null && symbol is null) {
+                    symbol = await GetSymbol(node, loc.Document.Project);
+                    node = node.Parent;
+                }
+                
+                if(symbol is null) { continue; }
+                if(symbol.CanBeReferencedByName) {
+                    if(await IsSymbolReferenced(symbol)) {
+                        return _alive[sym] = true;
+                    }
                 }
             } 
         }
 
-        _alive.Add(sym, alive);
-        return alive;
+        return false;
     }
 }

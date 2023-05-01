@@ -25,20 +25,22 @@ internal class Program {
             'd',
             "remove-dead",
             Required = false,
-            HelpText = "Remove dead code not referenced by the Program class",
-            Default = true
+            HelpText = "Remove dead code not referenced by the Program class"
         )]
         public bool RemoveDead { get; set; }
     }
 
     static async Task Main(string[] args) {
-        await Parser.Default.ParseArguments<BuildArgs>(args)
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await Parser
+            .Default
+            .ParseArguments<BuildArgs>(args)
             .MapResult(
                 async (BuildArgs build) => {
                     string projectName = build.Project ?? throw new ArgumentNullException();
                     var ctx = await ScriptWorkspaceContext.Create(build.SolutionPath ?? throw new ArgumentNullException());
 
-                    var syntax = await ctx.BuildProject(projectName, build.Rename);
+                    var syntax = await ctx.BuildProject(projectName, build.Rename, build.RemoveDead);
                     
                     string path;
                     
@@ -64,8 +66,9 @@ internal class Program {
                         len = output.Length;
                         file.Write(output);
                     }
-
-                    Console.WriteLine($" ({len} characters)");
+                    
+                    sw.Stop();
+                    Console.WriteLine($" ({len} characters)({sw.Elapsed.TotalSeconds:0.00} s)");
                 },
                 async (errs) => await Task.Run(() => {
                     foreach(var err in errs) {

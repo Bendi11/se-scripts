@@ -111,33 +111,57 @@ public class Renamer {
             _project = project;
         }
 
-        async public Task<(Solution, Project)> Run() {
-            Project project;
-            for(;;) {
-                project = _final.GetProject(_project)
-                    ?? throw new Exception($"Failed to locate project with ID {_project}");
-                var comp = await project.GetCompilationAsync()
-                    ?? throw new Exception($"Failed to get compilation for {project.Name}");
-                bool renamedInDoc = false;
-                foreach(var doc in project.Documents) {
-                    var tree = await doc.GetSyntaxTreeAsync()
-                        ?? throw new Exception($"Failed to get syntax tree for document {doc.FilePath}");
-                    var sema = comp.GetSemanticModel(tree)
-                        ?? throw new Exception($"Failed to get semantic model for document {doc.FilePath}");
-                    
-                    var walker = new RenamerWalker(Renamed, sema);
-                    walker.Visit(await tree.GetRootAsync());
-                    if(walker.ToRename is not null) {
-                        await RandomName(sema, walker.ToRename);
-                        renamedInDoc = true;
-                        break;
-                    }
-                }
+        private bool CanSymbolBeRenamed(ISymbol symbol) =>
+            false &&
+                        !symbol.IsExtern &&
+                        symbol.CanBeReferencedByName &&
+                        !Renamed.Contains(symbol.Name) &&
+                        !(symbol is INamedTypeSymbol && (symbol.Name.Equals("Program"))) ||
+                        !(symbol is IMethodSymbol && (symbol.Name.Equals("Save") || symbol.Name.Equals("Main")));
 
-                if(!renamedInDoc) { break; }
+
+        async public Task<(ISymbol, SemanticModel)?> Symbol() {
+            var project = _final.GetProject(_project)
+                ?? throw new Exception($"Failed to locate project with ID {_project}");
+            var comp = await project.GetCompilationAsync()
+                ?? throw new Exception($"Failed to get compilation for {project.Name}");
+            foreach(var doc in project.Documents) {
+                var tree = await doc.GetSyntaxTreeAsync()
+                    ?? throw new Exception($"Failed to get syntax tree for document {doc.FilePath}");
+                var sema = comp.GetSemanticModel(tree)
+                    ?? throw new Exception($"Failed to get semantic model for document {doc.FilePath}");
+                
+                foreach(var sym in sema.LookupSymbols(0)) {
+                    if(CanSymbolBeRenamed(sym)) { return (sym, sema); }
+
+                    ISymbol? member = sym switch {
+                        INamespaceOrTypeSymbol ty => ty.GetMembers().Where(CanSymbolBeRenamed).FirstOrDefault(),
+                        ILocalSymbol v => (CanSymbolBeRenamed(v) ? v : null),
+                        IFieldSymbol f => (CanSymbolBeRenamed(f) ? f : null),
+                        IMethodSymbol mth => await Task.Run(() => {
+                            var param = mth.Parameters.Where(CanSymbolBeRenamed).FirstOrDefault() as ISymbol;
+                            if(param is null) {
+                                param = mth.TypeParameters.Where(CanSymbolBeRenamed).FirstOrDefault() as ISymbol;
+                            }
+                            return param;
+                        }),
+                        var _ => null,
+                    };
+
+                    if(member is not null) { return (member, sema); }
+                }
             }
 
-            return (_final, project);
+            return null;
+        }
+
+        async public Task<Solution> Run() {
+            (ISymbol toRename, SemanticModel sema)? symbolRet = null;
+            while((symbolRet = await Symbol()).HasValue) {
+                await RandomName(symbolRet.Value.sema, symbolRet.Value.toRename);
+            }
+
+            return _final;
         }
 
         private class RenamerWalker: CSharpSyntaxWalker {
@@ -203,8 +227,11 @@ public class Renamer {
 
             private void AttemptRename(SyntaxNode node) {
                 if(ToRename is not null) { return; }
-                var symbol = _sema.GetDeclaredSymbol(node) ?? throw new Exception($"Failed to get symbol for syntax {node.GetText()}");
+                var symbol = _sema
+                    .GetDeclaredSymbol(node)
+                    ?? throw new Exception($"Failed to get symbol for syntax {node.GetText()}");
                 if(
+                        (symbol.IsExtern) ||
                         (!symbol.CanBeReferencedByName) ||
                         (symbol is INamedTypeSymbol && (symbol.Name.Equals("Program"))) ||
                         (symbol is IMethodSymbol) && (symbol.Name.Equals("Save") || symbol.Name.Equals("Main"))
@@ -213,6 +240,7 @@ public class Renamer {
                 }
 
                 if(!_renamed.Contains(symbol.Name)) {
+                    Console.WriteLine($"TYPE: {symbol.Kind}");
                     ToRename = symbol;
                     return;
                 }
@@ -221,7 +249,7 @@ public class Renamer {
 
         async private Task RandomName(SemanticModel sema, ISymbol symbol) {
             string name = _gen.Next();
-            bool conflicts = true;
+            /*bool conflicts = true;
             while(conflicts) {
                 conflicts = false;
                 foreach(var loc in symbol.Locations) {
@@ -237,10 +265,9 @@ public class Renamer {
                     Console.WriteLine($"Generated symbol {name} (replaces {symbol.Name}) collides, regenerating...");
                     name = _gen.Next();
                 }
-            }
-            Console.WriteLine($"Renaming {symbol.ToDisplayString()} to {name}");
-        _final = await Microsoft.CodeAnalysis.Rename.Renamer.RenameSymbolAsync(_final, symbol, _opts, name);
+            }*/
+            Console.WriteLine($"Renaming {symbol.Name} to {name}");
+            _final = await Microsoft.CodeAnalysis.Rename.Renamer.RenameSymbolAsync(_final, symbol, _opts, name);
             Renamed.Add(name);
         }
     }
-
