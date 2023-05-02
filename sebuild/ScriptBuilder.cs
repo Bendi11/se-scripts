@@ -4,7 +4,6 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
-using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace SeBuild;
 
@@ -18,6 +17,8 @@ public class ScriptBuilder: IDisposable {
     public string GameScriptDir {
         get => scriptDir;
     }
+
+    public ulong InitialChars = 0;
 
     DeadCodeRemover DeadCodePass;
     Renamer RenamePass;
@@ -54,6 +55,9 @@ public class ScriptBuilder: IDisposable {
 
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
     async public Task<List<CSharpSyntaxNode>> BuildProject() {
+        //Collect diagnostics before renaming identifiers
+        var diags = (await Common.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning);
+
         if(Common.Args.RemoveDead) {
             using(var prog = new PassProgress("Eliminating Dead Code")) {
                 DeadCodePass.Progress = prog;
@@ -68,7 +72,7 @@ public class ScriptBuilder: IDisposable {
             }
         }
 
-        foreach(var diag in (await Common.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning)) {
+        foreach(var diag in diags) {
             Console.ForegroundColor = diag.Severity switch {
                 DiagnosticSeverity.Error => ConsoleColor.Red,
                 DiagnosticSeverity.Warning => ConsoleColor.Yellow,
@@ -88,8 +92,16 @@ public class ScriptBuilder: IDisposable {
         if(loadedProjects.Contains(id)) { return; }
         loadedProjects.Add(id);
 
-        foreach(var doc in Common.Solution.GetProject(id)!.DocumentIds) {
-            Common.Documents.Add(doc);
+        foreach(var doc in Common.Solution.GetProject(id)!.Documents) {
+            Common.Documents.Add(doc.Id);
+            if(doc.FilePath is not null && doc.Folders.FirstOrDefault() != "obj") {
+                try {
+                    FileInfo fi = new FileInfo(doc.FilePath);
+                    InitialChars += (ulong)fi.Length;
+                } catch(Exception) {
+
+                }
+            }
         }
 
         foreach(var dep in Common.Project.ProjectReferences) {

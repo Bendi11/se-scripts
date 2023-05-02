@@ -42,7 +42,21 @@ internal class Program {
                     }
                     
                     sw.Stop();
-                    Console.WriteLine($" ({len} characters)({sw.Elapsed.TotalSeconds:0.00} s)");
+
+                    var reduction = ((double)ctx.InitialChars - (double)len) / (double)ctx.InitialChars;
+                    var color = reduction switch {
+                        <= 0.1 => ConsoleColor.DarkGray,
+                        <= 0.5 => ConsoleColor.DarkYellow,
+                        <= 0.6 => ConsoleColor.Yellow,
+                        <= 0.8 => ConsoleColor.DarkGreen,
+                        var _ => ConsoleColor.Green,
+                    };
+
+                    Console.Write($" ({len:0,0} characters - ");
+                    Console.ForegroundColor = color;
+                    Console.Write($"{reduction * 100.0:0.00}");
+                    Console.ResetColor();
+                    Console.WriteLine($"%)({sw.Elapsed.TotalSeconds:0.000} s)");
                 },
                 async (errs) => await Task.Run(() => {
                     foreach(var err in errs) {
