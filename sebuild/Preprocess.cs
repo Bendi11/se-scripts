@@ -25,9 +25,13 @@ public class Preprocessor {
             decls = dec;
         }
 
-        public override void VisitStructDeclaration(StructDeclarationSyntax node) => decls.Add(node);
+        public override void VisitStructDeclaration(StructDeclarationSyntax node) {
+            lock(decls) { decls.Add(node); }
+        }
 
-        public override void VisitEnumDeclaration(EnumDeclarationSyntax node) => decls.Add(node);
+        public override void VisitEnumDeclaration(EnumDeclarationSyntax node) {
+            lock(decls) { decls.Add(node); }
+        }
         
         public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
             if(
@@ -41,17 +45,20 @@ public class Preprocessor {
                         ?? false
                     )
             ) {
-                decls.AddRange(node.Members);
+                lock(decls) { decls.AddRange(node.Members); }
             } else {
-                decls.Add(node);
+                lock(decls) { decls.Add(node); }
             }
         }
     }
 
     async private Task<List<CSharpSyntaxNode>> Finish() {
+        var tasks = new List<Task>();
         foreach(var doc in from doc in Common.DocumentsIter where doc.Folders.FirstOrDefault() != "obj" select doc) {
-            await Digest(doc);
+            tasks.Add(Task.Run(async () => await Digest(doc)));
         }
+
+        await Task.WhenAll(tasks);
         
         return this.decls;
     }

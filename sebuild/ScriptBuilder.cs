@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
+using System.Diagnostics;
 
 namespace SeBuild;
 
@@ -32,18 +33,18 @@ public class ScriptBuilder: IDisposable {
     /// </param>
     static async public Task<ScriptBuilder> Create(BuildArgs args) {
         var me = new ScriptBuilder();
-        var sln = await me.Init(args.SolutionPath);
+        var project = await me.Init(args.SolutionPath, args.Project);
 
-        var projectId = (
+        /*var projectId = (
             sln
                 .Projects
                 .SingleOrDefault(p => p.Name == args.Project)?? throw new Exception($"Solution does not contain a project with name ${args.Project}")
-        ).Id;
+        ).Id;*/
 
         
-        me.Common = new ScriptCommon(sln, projectId, new List<DocumentId>(), args);
-        
-        me.GetDocuments(projectId, new HashSet<ProjectId>());
+        me.Common = new ScriptCommon(project.Solution, project.Id, new List<DocumentId>(), args);
+         
+        me.GetDocuments(project.Id, new HashSet<ProjectId>());
         me.DeadCodePass = new DeadCodeRemover(me.Common);
         me.RenamePass = new Renamer(me.Common);
         return me;
@@ -56,7 +57,7 @@ public class ScriptBuilder: IDisposable {
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
     async public Task<List<CSharpSyntaxNode>> BuildProject() {
         //Collect diagnostics before renaming identifiers
-        var diags = (await Common.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning);
+        var diags = new List<Diagnostic>();//(await Common.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning);
 
         if(Common.Args.RemoveDead) {
             using(var prog = new PassProgress("Eliminating Dead Code")) {
@@ -113,25 +114,68 @@ public class ScriptBuilder: IDisposable {
     private ScriptBuilder() {
         workspace = MSBuildWorkspace.Create();
     }
-
-    async private Task<Solution> Init(string slnPath) {
+    
+    /// Find a path to a file of the given extension, using the given path hint
+    private string? FindPath(string path, string? mExtension = null) {
+        string extension = mExtension ?? String.Empty;
+        string dirPath = path;
         bool dir = true;
-        try {
-            var fa = File.GetAttributes(slnPath);
-            dir = fa.HasFlag(FileAttributes.Directory);
-        } catch(FileNotFoundException) {}
 
-        if(dir) {
-            foreach(var file in Directory.GetFiles(slnPath)) {
-                if(Path.GetExtension(file).ToUpper().Equals(".SLN")) {
-                    slnPath = file;
-                    break;
-                }
-            }
+        try {
+            var fa = File.GetAttributes(path);
+            dir = fa.HasFlag(FileAttributes.Directory);
+        } catch(FileNotFoundException) {
+            dirPath = "./";
+            dir = true;
         }
 
-        using(var progress = new PassProgress($"Read solution {slnPath}")) {
-            var sln = await workspace.OpenSolutionAsync(
+        if(dir) {
+            var withExtension =
+                from file in Directory.GetFiles(dirPath)
+                where Path.GetExtension(file).ToUpper().Equals(extension)
+                select file;
+
+            if(withExtension.Count() == 1) {
+                return withExtension.First();
+            } else {
+                foreach(var file in withExtension) {
+                    if(Path.GetFileNameWithoutExtension(file)
+                            .Equals(Path.GetFileNameWithoutExtension(path))
+                    ) {
+                        return file;
+                    }
+                }
+            }
+        } else {
+            return path;
+        }
+
+        return null;
+    }
+
+    async private Task<Project> Init(string slnPath, string projectPath) {
+        string slnFile = slnPath, projectFile = projectPath;
+        try {
+            slnFile = FindPath(slnPath, ".SLN") ??
+                throw new Exception($"Failed to find solution file using path {slnPath}");
+            projectFile = FindPath(projectPath, ".CSPROJ") ??
+                throw new Exception($"Failed to find project file with path {projectPath}");
+        } catch(Exception e) {
+            Console.WriteLine(e.Message);
+        }
+
+        using(var progress = new PassProgress($"Read solution {slnFile}")) {
+            var project = await workspace.OpenProjectAsync(
+                projectFile,
+                new Progress<ProjectLoadProgress>(
+                    loadProgress => {
+                        progress.Message = $"{loadProgress.Operation} {loadProgress.FilePath}";
+                        progress.Report(1);
+                    }
+                )
+            );
+
+            /*var sln = await workspace.OpenSolutionAsync(
                 slnPath,
                 new Progress<ProjectLoadProgress>(
                     loadProgress => {
@@ -139,15 +183,16 @@ public class ScriptBuilder: IDisposable {
                         progress.Report(1);
                     }
                 )
-            );
-            var envProject = 
+            );*/
+
+            /*var envProject = 
                 sln
                 .Projects
-                .SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file"); 
+                .SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file");*/
 
             // Now we use the MSBuild apis to load and evaluate our project file
             using var xmlReader = XmlReader.Create(
-                File.OpenRead(envProject.FilePath ?? throw new Exception("Failed to locate env.csproj file"))
+                File.OpenRead(Path.Join(Path.GetDirectoryName(slnPath), "env.csproj"))
             );
             ProjectRootElement root = ProjectRootElement.Create(
                 xmlReader,
@@ -159,7 +204,7 @@ public class ScriptBuilder: IDisposable {
             scriptDir = msbuildProject.GetPropertyValue("SpaceEngineersScript");
             if(scriptDir.Length == 0) { throw new Exception("No SpaceEngineersScript property defined in env.csproj"); }
 
-            return sln;
+            return project;
         }
     }
 }

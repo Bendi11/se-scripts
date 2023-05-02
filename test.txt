@@ -1,1 +1,463 @@
-Seeker A;IMySensorBlock B;e C;IMyShipConnector D;Á E;List<IMyWarhead>F;uint G=1;float H=0;public Program(){Þ.â(Me.GetSurface(0));try{A=new Seeker(GridTerminalSystem,Me,Runtime);List<IMyGyro>I=new List<IMyGyro>();GridTerminalSystem.GetBlocksOfType(I,(J)=>J.IsSameConstructAs(Me));C=new GyroController(I,A.Cam);C.k=new ë(0.5f,0f,0f);MyIni K=new MyIni();if(K.TryParse(Me.CustomData)){float L=(float)K.Get("seeker","mul").ToDouble();G=K.Get("seeker","scans").ToUInt32();A.ScanAzimuth=(float)K.Get("seeker","az").ToDouble(A.ScanAzimuth);A.ScanElevation=(float)K.Get("seeker","el").ToDouble(A.ScanElevation);A.ScanAzimuthRange=(float)K.Get("seeker","azr").ToDouble(A.ScanAzimuthRange);A.ScanElevationRange=(float)K.Get("seeker","elr").ToDouble(A.ScanElevationRange);A.ScanSpeedMultiplier=L;}F=new List<IMyWarhead>();GridTerminalSystem.GetBlocksOfType(F,(M)=>M.IsSameConstructAs(Me));foreach(var N in F){N.IsArmed=true;}E=new Thrust(GridTerminalSystem,A.Cam,1506);E.È=10f;List<IMySensorBlock>O=new List<IMySensorBlock>();GridTerminalSystem.GetBlocksOfType(O,(P)=>P.IsSameConstructAs(Me)&&MyIni.HasSection(P.CustomData,"prox"));if(O.Count!=1){Þ.æ($"Expecting 1 sensor with a [prox] tag, found {O.Count}");}B=O.First();List<IMyShipConnector>Q=new List<IMyShipConnector>();GridTerminalSystem.GetBlocksOfType(Q,(R)=>R.IsSameConstructAs(Me)&&MyIni.HasSection(R.CustomData,"hardpoint"));if(Q.Count!=1){Þ.æ($"Expecting 1 connector with a [hardpoint] tag, found {Q.Count}");}D=Q.First();B.DetectEnemy=B.DetectAsteroids=B.DetectNeutral=B.DetectPlayers=B.DetectLargeShips=B.DetectSmallShips=B.DetectStations=B.DetectFloatingObjects=true;B.BackExtend=B.RightExtend=B.LeftExtend=B.BottomExtend=B.TopExtend=B.BottomExtend=2;A.Seek.Begin();Runtime.UpdateFrequency|=UpdateFrequency.Once;}catch(Exception e){Þ.æ(e.Message);}}public void Save(){}public void Main(string S,UpdateType T){try{if(T.HasFlag(UpdateType.Once)){A.Tick();C.t();E.Ø();for(uint U=0;U<G;++U){try{A.Seek.Poll();}catch(Exception e){Þ.æ(e.Message);}}if(A.Locked&&!D.IsConnected){C.p();if(!E.Enabled){E.Ã=Vector3D.One*500;Runtime.UpdateFrequency|=UpdateFrequency.Once;return;}E.Enabled=true;var V=A.Tracked.body.Position;var W=Vector3.Distance(V,A.Cam.GetPosition());float X=(float)(A.Ticks-A.Tracked.tick)*0.016f;if(B.IsActive&&B.LastDetectedEntity.EntityId==A.Tracked.body.EntityId||(!B.IsWorking&&W<5)){foreach(var Y in F){Y.Detonate();}}var Z=A.Tracked.body.Velocity-A.Cam.CubeGrid.LinearVelocity;var a=A.Tracked.body.Position-A.Cam.GetPosition();var b=(a.Cross(Z))/(a.Dot(a));var c=5;var d=(c*Z).Cross(b);E.VelWorld+=d/0.016f;C.g=Vector3D.Normalize(d);}else{E.Enabled=true;E.Ã=Vector3D.Zero;C.g=-A.Cam.CubeGrid.LinearVelocity;}Runtime.UpdateFrequency|=UpdateFrequency.Once;}}catch(Exception e){Þ.æ(e.ToString());E.Enabled=false;C.r();}}public class e{public List<IMyGyro>f;public Vector3 g=Vector3.UnitX;IMyTerminalBlock h;Vector3 i;float j=0F;public ë k=new ë(0.2f,0f,0f);public float l=0.0001F;public e(List<IMyGyro>m,IMyTerminalBlock n){f=m;h=n;Matrix o;h.Orientation.GetMatrix(out o);i=o.Forward;r();}public void p(){foreach(var q in f){q.GyroOverride=true;}}public void r(){foreach(var s in f){s.GyroOverride=false;}}public float t(){Matrix u;var v=GetAngle();var w=k.Run(v);foreach(var x in f){x.Orientation.GetMatrix(out u);var y=Vector3.TransformNormal(i,Matrix.Transpose(u));var z=Vector3.TransformNormal(g,MatrixD.Transpose(x.WorldMatrix));var À=Vector3.Cross(y,z);À.Normalize();À=-À*w;x.Pitch=À.X;x.Yaw=À.Y;x.Roll=À.Z;}return j;}}public class Á{public MyGridProgram Â;public Vector3 Ã;public Vector3 VelWorld{get{return Vector3.TransformNormal(Ã,Ç.WorldMatrix);}set{Ã=Vector3.TransformNormal(value,MatrixD.Transpose(Ç.WorldMatrix));}}bool Ä=false;public bool Enabled{get{return Ä;}set{Ä=value;if(!value){foreach(var Å in Ê)Å.ThrustOverride=0;}else{UpdateMass();}}}public IMyShipController Æ=null;public IMyTerminalBlock Ç;public float È=0.7F;float É;List<IMyThrust>Ê=new List<IMyThrust>();List<IMyThrust>Ë,Ì,Í,Î,Ï,Ð;public Á(IMyGridTerminalSystem Ñ,IMyTerminalBlock Ò,float Ó){Ç=Ò;Func<Vector3D,List<IMyThrust>>Ô=(dir)=>{var list=new List<IMyThrust>();Ñ.GetBlocksOfType(list,thrust=>thrust.WorldMatrix.Backward==dir);return list;};Ñ.GetBlocksOfType(Ê);var Õ=Ç.WorldMatrix;Ï=Ô(Õ.Forward);Ð=Ô(Õ.Backward);Ë=Ô(Õ.Right);Ì=Ô(Õ.Left);Í=Ô(Õ.Up);Î=Ô(Õ.Down);UpdateMass(Ó);}public Á(IMyGridTerminalSystem Ö,IMyShipController×):this(Ö,×as IMyTerminalBlock,×.CalculateShipMass().TotalMass){this.Æ=×;}public void Ø(){if(!Ä)return;var Ù=(Ã-Vector3D.TransformNormal(Ç.CubeGrid.LinearVelocity,MatrixD.Transpose(Ç.WorldMatrix)))*É*È;Ú(Ë,Ù.X);Ú(Ì,-Ù.X);Ú(Í,Ù.Y);Ú(Î,-Ù.Y);Ú(Ð,Ù.Z);Ú(Ï,-Ù.Z);}private void Ú(List<IMyThrust>Û,double Ü){foreach(var Ý in Û){Ý.ThrustOverride=Math.Max((float)Ü,0.001F);Ü-=Ý.MaxEffectiveThrust;}}}public static class Þ{static IMyTextSurface ß;static int à=0;static Vector2 á;public static void â(IMyTextSurface ã){ß=ã;ß.WriteText("",false);ß.BackgroundColor=Color.Black;ß.ContentType=ContentType.TEXT_AND_IMAGE;ß.Font="Monospace";ß.FontColor=Color.Lime;ß.FontSize=0.7F;ß.TextPadding=0F;var ä=new StringBuilder();ä.Append('A');var å=ß.MeasureStringInPixels(ä,"Monospace",ß.FontSize);á=(ß.SurfaceSize-å)/å;}public static void æ(string ç){è("[FTL]"+ç);throw new Exception(ç);}public static void è(string é){if(à>=á.Y){ß.WriteText("",false);à=0;}while(é.Length>0){int ê=Math.Min((int)á.X,é.Length);ß.WriteText(é.Substring(0,ê),true);é=é.Substring(ê);ß.WriteText("\n",true);à+=1;}}}public sealed class ë{float ì=0;float í;float î;float ï=float.NaN;float ð=0F;public ë(float ñ,float ò,float ó,float ô=0F,float õ=0.016F){P=ñ;I=ò;D=ó;í=õ;î=1f/í;ð=ô;}public ë(ë ö){P=ö.P;I=ö.I;D=ö.D;ì=ö.ì;í=ö.í;ï=ö.ï;ð=ö.ð;}}
+    public struct Nil { public readonly static Nil _; }
+    /// <summary>
+    /// Gyroscrope controller that accounts for multiple gyroscopes, taking the orientation of each into account
+    /// </summary>
+    public class GyroController {
+        public List<IMyGyro> Gyros;
+        public Vector3 OrientWorld = Vector3.UnitX;
+        public Vector3 OrientLocal {
+            get { return Vector3.TransformNormal(OrientWorld, Matrix.Transpose(_ref.WorldMatrix)); }
+            set { OrientWorld = Vector3.TransformNormal(value, _ref.WorldMatrix); }
+        }
+        IMyTerminalBlock _ref;
+        Vector3 _localAlign;
+        float _ang = 0F;
+        public PID Pid = new PID(0.2f, 0f, 0f);
+        public float OrientedThreshold = 0.0001F;
+        public bool IsOriented { get { return Math.Abs(_ang) < OrientedThreshold; } }
+        
+        /// <summary>
+        /// Create a new <c>GyroController</c> from a list of controlled <c>IMyGyro</c> blocks and a reference vector
+        /// </summary>
+        /// <param name="rf">Local direction vector that will be oriented with the <c>Orient</c> vector</param>
+        public GyroController(List<IMyGyro> gyros, IMyTerminalBlock rf) {
+            Gyros = gyros;
+            _ref = rf;
+            Matrix or;
+            _ref.Orientation.GetMatrix(out or);
+            _localAlign = or.Forward;
+            Disable();
+        }
+        
+        /// <summary>
+        /// Enable gyro override on all controlled gyroscopes
+        /// </summary>
+        public void Enable() { foreach(var gyro in Gyros) { gyro.GyroOverride = true; } }
+
+        /// <summary>
+        /// Disable gyro override for all controlled gyroscopes
+        /// </summary>
+        public void Disable() { foreach(var gyro in Gyros) { gyro.GyroOverride = false; }}
+        
+        /// <summary>
+        /// Run a single gyroscope control step, adjusting the gyros as needed to align the reference block with the current
+        /// orientation vector
+        /// </summary>
+        /// <returns>The angle between the reference block's forward vector and one of the gyroscopes</returns>
+        public float Step() {
+            Matrix gor;
+            var error = GetAngle();
+            var speed = Pid.Run(error);
+            foreach(var gyro in Gyros) {
+                gyro.Orientation.GetMatrix(out gor);
+                var localfw = Vector3.TransformNormal(_localAlign, Matrix.Transpose(gor));
+                var localmove = Vector3.TransformNormal(OrientWorld, MatrixD.Transpose(gyro.WorldMatrix));
+
+                var axis = Vector3.Cross(localfw, localmove);
+                axis.Normalize();
+                axis = -axis * speed;
+
+                gyro.Pitch = axis.X;
+                gyro.Yaw = axis.Y;
+                gyro.Roll = axis.Z;
+            }
+
+            return _ang;
+        }
+
+        private float GetAngle() => _ang = AngleBetween(_ref.WorldMatrix.GetOrientation().Forward, OrientWorld);
+
+        private float AngleBetween(Vector3 a, Vector3 b) {
+            a.Normalize();
+            b.Normalize();
+            var angle = (float)Math.Acos(a.Dot(b));
+            if(angle == 0) { return 0.00001F; }
+            if(float.IsNaN(angle)) { return -0.00001F; }
+            else { return angle; }
+        }
+    }
+    /// <summary>
+    /// Simple logging facility supporting many screen sizes and automatic text wrapping
+    /// </summary>
+    public static class Log {
+        static IMyTextSurface _term;
+        static int _lines = 0;
+        static Vector2 BOUNDS;
+
+        public static void Init(IMyTextSurface term) {
+            _term = term;
+            _term.WriteText("", false);
+            _term.BackgroundColor = Color.Black;
+            _term.ContentType = ContentType.TEXT_AND_IMAGE;
+            _term.Font = "Monospace";
+            _term.FontColor = Color.Lime;
+            _term.FontSize = 0.7F;
+            _term.TextPadding = 0F;
+            var sb = new StringBuilder();
+            sb.Append('A');
+            var sz = _term.MeasureStringInPixels(sb, "Monospace", _term.FontSize);
+            BOUNDS = (_term.SurfaceSize - sz) / sz;
+        }
+        
+        /// <summary>
+        /// Display a given panic message on the terminal and throw an exception with the message
+        /// </summary>
+        public static void Panic(string msg) {
+            Put("[FTL]" + msg);
+            throw new Exception(msg);
+        }
+
+        public static void Error(string msg) => Put("[ERR]" + msg);
+        public static void Warn(string msg) => Put("[WRN]" + msg);
+
+        public static void Put(string msg) {
+            if(_lines >= BOUNDS.Y) {
+                _term.WriteText("", false);
+                _lines = 0;
+            }
+            
+            while(msg.Length > 0) {
+                int len = Math.Min((int)BOUNDS.X, msg.Length);
+                _term.WriteText(msg.Substring(0, len), true);
+                msg = msg.Substring(len);
+                _term.WriteText("\n", true);
+                _lines += 1;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Write text onto LCD panels with automatic screen wrapping and font sizing
+    /// </summary>
+    public class LcdWriter {
+        public IMyTextSurface LCD;
+        public bool Wrap = true;
+        readonly Vector2 _bounds, _defaultCharSize;
+        readonly StringBuilder _sb = new StringBuilder();
+        const string FONT = "Monospace";
+        int _lines = 0;
+        
+        /// <summary>
+        /// How many lines the LCD should be able to fit, adjusts font size
+        /// </summary>
+        public float FitLines {
+            set { LCD.FontSize = FitLines / value; }
+
+            get { return _bounds.Y / _defaultCharSize.Y; }
+        }
+
+        public float FitCols {
+            set { LCD.FontSize = FitCols / value; }
+
+            get { return _bounds.X / _defaultCharSize.X; }
+        }
+
+        public void Fit(float lines, float cols) {
+            var fLines = FitLines / lines;
+            var fCols = FitCols / cols;
+            LCD.FontSize = Math.Min(fLines, fCols);
+        }
+
+        public LcdWriter(IMyTextSurface lcd) {
+            _sb.Append('A');
+            LCD = lcd;
+            LCD.Font = FONT;
+            LCD.FontSize = 1;
+            LCD.TextPadding = 0F;
+            _defaultCharSize = LCD.MeasureStringInPixels(_sb, FONT, 1);
+        }
+        
+        public void Write(string msg) {
+            if(_lines >= _bounds.Y) {
+                LCD.WriteText("", false);
+                _lines = 0;
+            }
+            
+            do {
+                int len = Math.Min((int)_bounds.X, msg.Length);
+                LCD.WriteText(msg.Substring(0, len), true);
+                msg = msg.Substring(len);
+                LCD.WriteText("\n", true);
+                _lines += 1;
+            } while(Wrap && (msg.Length >= 0));
+        }
+    }
+    /// <summary>
+    /// General purpose thrust controller that manipulates thruster override to 
+    /// set a ship's velocity vector
+    /// </summary>
+    public class Thrust {
+        public MyGridProgram prog;
+        public Vector3 VelLocal;
+        public Vector3 VelWorld {
+            get { return Vector3.TransformNormal(VelLocal, Ref.WorldMatrix); }
+            set { VelLocal = Vector3.TransformNormal(value, MatrixD.Transpose(Ref.WorldMatrix)); }
+        }
+        
+        bool _enabled = false;
+        public bool Enabled {
+            get { return _enabled; }
+            set {
+                _enabled = value;
+                if(!value) {
+                    foreach(var th in _all) th.ThrustOverride = 0;
+                } else {
+                    UpdateMass();
+                }
+            }
+        }
+
+        public IMyShipController Control = null;
+        public IMyTerminalBlock Ref;
+        public float Rate = 0.7F;
+        float _mass;
+        List<IMyThrust> _all = new List<IMyThrust>();
+        List<IMyThrust> _right, _left, _up, _down, _fw, _bw;
+        
+        public Thrust(IMyGridTerminalSystem GTS, IMyTerminalBlock _ref, float mass) {
+            Ref = _ref;
+            Func<Vector3D, List<IMyThrust>> fill = (dir) => {
+                var list = new List<IMyThrust>();
+                GTS.GetBlocksOfType(list, thrust => thrust.WorldMatrix.Backward == dir);
+                return list;
+            };
+            
+            GTS.GetBlocksOfType(_all);
+            var mat = Ref.WorldMatrix;
+            _fw = fill(mat.Forward);
+            _bw = fill(mat.Backward);
+            _right = fill(mat.Right);
+            _left = fill(mat.Left);
+            _up = fill(mat.Up);
+            _down = fill(mat.Down);
+            UpdateMass(mass);
+        }
+        
+        public Thrust(IMyGridTerminalSystem GTS, IMyShipController control) : this(GTS, control as IMyTerminalBlock, control.CalculateShipMass().TotalMass) {
+            this.Control = control; 
+        }
+        
+        
+        public void UpdateMass() => _mass = Control != null ? Control.CalculateShipMass().TotalMass : _mass;
+        public void UpdateMass(float mass) => _mass = mass;
+
+        public void Step() {
+            if(!_enabled) return;
+            var force = (VelLocal - Vector3D.TransformNormal(Ref.CubeGrid.LinearVelocity, MatrixD.Transpose(Ref.WorldMatrix))) * _mass * Rate;
+            ApplyAccel(_right, force.X); 
+            ApplyAccel(_left, -force.X);
+            ApplyAccel(_up, force.Y);
+            ApplyAccel(_down, -force.Y);
+            ApplyAccel(_bw, force.Z);
+            ApplyAccel(_fw, -force.Z);
+        }
+
+        private void ApplyAccel(List<IMyThrust> list, double accel) {
+            foreach(var th in list) {
+                th.ThrustOverride = Math.Max((float)accel, 0.001F);
+                accel -= th.MaxEffectiveThrust;
+            }
+        }
+    } 
+    public sealed class PID {
+        float P { get; set; }
+        float I { get; set; }
+        float D { get; set; }
+
+        float errsum = 0;
+        float ts;
+        float tsInv;
+        float last_err = float.NaN;
+        float i_decay = 0F;
+
+        public PID(float kp, float ki, float kd, float idec = 0F, float time = 0.016F) {
+            P = kp;
+            I = ki;
+            D = kd;
+            ts = time;
+            tsInv = 1f / ts;
+            i_decay = idec;
+        }
+
+        public PID(PID other) {
+            P = other.P;
+            I = other.I;
+            D = other.D;
+            errsum = other.errsum;
+            ts = other.ts;
+            last_err = other.last_err;
+            i_decay = other.i_decay;
+        }
+
+        public float Run(float error) {
+            errsum += error;
+            errsum *= (1F - i_decay);
+            float i = errsum * (1F - i_decay) + error * ts;
+            
+            float d = (error - last_err) * tsInv;
+            if(float.IsNaN(last_err)) {
+                d = 0;
+            }
+
+            float output = (P * error) + (I * i) + (D * d);
+            last_err = error;
+            return output;
+        }
+    }
+
+    public static class Process {
+        public static double Time = 0;
+        static List<IEnumerable> _procs = new List<IEnumerable>();
+
+        public static void RunMain(double timeStep) {
+            for(int i = 0; i < _procs.Count; ++i) {
+                bool more = _procs[i].GetEnumerator().MoveNext();
+                if(!more) { _procs[i] = null; }
+            }
+        }
+
+        public static void Spawn(IEnumerable process) {
+            _procs.Add(process);
+        }
+
+        public static T Get<T>(IEnumerable<T> proc) => proc.GetEnumerator().Current;
+    }
+        Seeker seeker;
+        IMySensorBlock sensor;
+        GyroController gyro;
+        IMyShipConnector connector;
+        Thrust thrust;
+        List<IMyWarhead> warheads;
+        uint scansPerTick = 1;
+        float lastDist = 0;
+         
+        public Program() {
+            Log.Init(Me.GetSurface(0));
+
+            try {
+                seeker = new Seeker(GridTerminalSystem, Me, Runtime);
+                List<IMyGyro> gyros = new List<IMyGyro>();
+                GridTerminalSystem.GetBlocksOfType(gyros, (gyro) => gyro.IsSameConstructAs(Me));
+                gyro = new GyroController(gyros, seeker.Cam);
+                gyro.Pid = new PID(0.5f, 0f, 0f);
+                
+                MyIni ini = new MyIni();
+                if(ini.TryParse(Me.CustomData)) {
+                    float mul = (float)ini.Get("seeker", "mul").ToDouble();
+                    scansPerTick = ini.Get("seeker", "scans").ToUInt32();
+                    seeker.ScanAzimuth = (float)ini.Get("seeker", "az").ToDouble(seeker.ScanAzimuth);
+                    seeker.ScanElevation = (float)ini.Get("seeker", "el").ToDouble(seeker.ScanElevation);
+
+                    seeker.ScanAzimuthRange = (float)ini.Get("seeker", "azr").ToDouble(seeker.ScanAzimuthRange);
+                    seeker.ScanElevationRange = (float)ini.Get("seeker", "elr").ToDouble(seeker.ScanElevationRange);
+                    seeker.ScanSpeedMultiplier = mul;
+                }
+                
+                warheads = new List<IMyWarhead>();
+                GridTerminalSystem.GetBlocksOfType(warheads, (block) => block.IsSameConstructAs(Me));
+                foreach(var bomb in warheads) {
+                    bomb.IsArmed = true;
+                }
+
+                thrust = new Thrust(GridTerminalSystem, seeker.Cam, 1506); 
+                thrust.Rate = 10f;
+                
+                List<IMySensorBlock> sensors = new List<IMySensorBlock>();
+                GridTerminalSystem.GetBlocksOfType(sensors, (block) => block.IsSameConstructAs(Me) && MyIni.HasSection(block.CustomData, "prox"));
+                if(sensors.Count != 1) { Log.Panic($"Expecting 1 sensor with a [prox] tag, found {sensors.Count}"); }
+                sensor = sensors.First();
+
+                List<IMyShipConnector> connectors = new List<IMyShipConnector>();
+                GridTerminalSystem.GetBlocksOfType(connectors, (block) => block.IsSameConstructAs(Me) && MyIni.HasSection(block.CustomData, "hardpoint"));
+                if(connectors.Count != 1) { Log.Panic($"Expecting 1 connector with a [hardpoint] tag, found {connectors.Count}"); }
+                connector = connectors.First();
+
+                sensor.DetectEnemy =
+                    sensor.DetectAsteroids =
+                    sensor.DetectNeutral =
+                    sensor.DetectPlayers =
+                    sensor.DetectLargeShips =
+                    sensor.DetectSmallShips =
+                    sensor.DetectStations =
+                    sensor.DetectFloatingObjects =
+                    true;
+
+                sensor.BackExtend = 
+                    sensor.RightExtend =
+                    sensor.LeftExtend =
+                    sensor.BottomExtend =
+                    sensor.TopExtend =
+                    sensor.BottomExtend =
+                    2;
+                
+                seeker.Seek.Begin();
+                Runtime.UpdateFrequency |= UpdateFrequency.Once;
+            } catch(Exception e) {
+                Log.Panic(e.Message);
+            }
+        }
+
+        public void Save() {
+            
+        }
+
+        public void Main(string argument, UpdateType updateSource) {
+            try {
+                if(updateSource.HasFlag(UpdateType.Once)) {
+                    seeker.Tick();
+                    gyro.Step();
+                    thrust.Step();
+                    for(uint i = 0; i < scansPerTick; ++i) {
+                        try {
+                            seeker.Seek.Poll();
+                        } catch(Exception e) { Log.Panic(e.Message); }
+                    }
+
+                    if(seeker.Locked && !connector.IsConnected) { 
+                        gyro.Enable();
+                        if(!thrust.Enabled) {
+                            thrust.VelLocal = Vector3D.One * 500;
+                            Runtime.UpdateFrequency |= UpdateFrequency.Once;
+                            return;
+                        }
+                        thrust.Enabled = true;
+                        
+                        var pos = seeker.Tracked.body.Position;
+                        var dist = Vector3.Distance(pos, seeker.Cam.GetPosition());
+                        float secondsSincePing = (float)(seeker.Ticks - seeker.Tracked.tick) * 0.016f;
+                        if(
+                                sensor.IsActive && sensor.LastDetectedEntity.EntityId == seeker.Tracked.body.EntityId
+                                || (
+                                    !sensor.IsWorking &&
+                                    dist < 5
+                                )
+                        ) {
+                            foreach(var bomb in warheads) {
+                                bomb.Detonate();
+                            }
+                        }
+                        
+                        var vR = seeker.Tracked.body.Velocity - seeker.Cam.CubeGrid.LinearVelocity;
+                        var r = seeker.Tracked.body.Position - seeker.Cam.GetPosition();
+
+                        var omega = (r.Cross(vR)) / (r.Dot(r));
+                        
+                        var n = 5;
+                        var accel = (n * vR).Cross(omega); 
+
+                        thrust.VelWorld += accel / 0.016f;
+                        gyro.OrientWorld = Vector3D.Normalize(accel);
+                    } else {
+                        thrust.Enabled = true;
+                        thrust.VelLocal = Vector3D.Zero;
+                        gyro.OrientWorld = -seeker.Cam.CubeGrid.LinearVelocity;
+                    }
+
+                    Runtime.UpdateFrequency |= UpdateFrequency.Once;
+                }
+            } catch(Exception e) {
+                Log.Panic(e.ToString());
+                thrust.Enabled = false;
+                gyro.Disable();
+            }
+        }

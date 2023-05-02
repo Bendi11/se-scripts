@@ -11,7 +11,6 @@ internal class Program {
             .ParseArguments<BuildArgs>(args)
             .MapResult(
                 async (BuildArgs build) => {
-                    string projectName = build.Project ?? throw new ArgumentNullException();
                     var ctx = await ScriptBuilder.Create(build);
 
                     var syntax = await ctx.BuildProject();
@@ -19,7 +18,7 @@ internal class Program {
                     string path;
                     
                     if(build.Output == null) {
-                        path = Path.Combine(ctx.GameScriptDir, projectName);
+                        path = Path.Combine(ctx.GameScriptDir, build.Project);
                         Directory.CreateDirectory(path);
                         path = Path.Combine(path, "Script.cs");
                     } else {
