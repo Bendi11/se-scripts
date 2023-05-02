@@ -42,20 +42,31 @@ public class PassProgress: IProgress<int>, IDisposable {
     }
 
     static readonly char[] TICKER = {'▉', '▊', '▋', '▌', '▍', '▎', '▏', '▎', '▍', '▌', '▋', '▊', '▉'};
+    static readonly string CLEAR = new string(' ', Console.WindowWidth);
+
+    void ClearLine() {
+        Console.SetCursorPosition(0, Console.GetCursorPosition().Top);
+        Console.Write(CLEAR);
+        Console.SetCursorPosition(0, Console.GetCursorPosition().Top);
+    }
 
     public void Report(int value) {
         _total += value;
-        Console.Write($"\r {_name}: [{_total:0,0}] {TICKER[_total % TICKER.Count()]}{(Message is null ? "" : $" - {Message}")}\r");
+        Console.CursorVisible = false;
+        ClearLine();
+        Console.Write($"{_name}: [{_total:0,0}] {TICKER[_total % TICKER.Count()]}{(Message is null ? "" : $" - {Message}")}\r");
     }
 
     public void Dispose() {
         _stopWatch.Stop();
-        Console.Write('\r');
-        foreach(var _ in Enumerable.Range(0, 100)) {
-            Console.Write(' ');
-        }
+        var old = Console.ForegroundColor;
+        Console.ForegroundColor = ConsoleColor.Green;
 
+        ClearLine();
         Console.WriteLine($"\r✓ {_name} - {_stopWatch.Elapsed.TotalSeconds:0.000}");
+
+        Console.CursorVisible = true;
+        Console.ForegroundColor = old;
     }
 }
 

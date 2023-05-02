@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace SeBuild;
 
@@ -67,9 +68,18 @@ public class ScriptBuilder: IDisposable {
             }
         }
 
-        foreach(var diag in workspace.Diagnostics) {
+        foreach(var diag in (await Common.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning)) {
+            Console.ForegroundColor = diag.Severity switch {
+                DiagnosticSeverity.Error => ConsoleColor.Red,
+                DiagnosticSeverity.Warning => ConsoleColor.Yellow,
+                DiagnosticSeverity.Info => ConsoleColor.White,
+                DiagnosticSeverity.Hidden => ConsoleColor.Gray,
+                var _ => ConsoleColor.White,
+            };
             Console.WriteLine(diag);
         }
+
+        Console.ResetColor();
 
         return await Preprocessor.Build(Common);
     }
@@ -108,28 +118,36 @@ public class ScriptBuilder: IDisposable {
             }
         }
 
-        Console.WriteLine($"Reading solution file {slnPath}");
-        
-        var sln = await workspace.OpenSolutionAsync(slnPath);
-        var envProject = 
-            sln
-            .Projects
-            .SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file"); 
+        using(var progress = new PassProgress($"Read solution {slnPath}")) {
+            var sln = await workspace.OpenSolutionAsync(
+                slnPath,
+                new Progress<ProjectLoadProgress>(
+                    loadProgress => {
+                        progress.Message = loadProgress.Operation.ToString();
+                        progress.Report(1);
+                    }
+                )
+            );
+            var envProject = 
+                sln
+                .Projects
+                .SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file"); 
 
-        // Now we use the MSBuild apis to load and evaluate our project file
-        using var xmlReader = XmlReader.Create(
-            File.OpenRead(envProject.FilePath ?? throw new Exception("Failed to locate env.csproj file"))
-        );
-        ProjectRootElement root = ProjectRootElement.Create(
-            xmlReader,
-            new MSBuildProjectCollection(),
-            preserveFormatting: true
-        );
-        MSBuildProject msbuildProject = new MSBuildProject(root);
+            // Now we use the MSBuild apis to load and evaluate our project file
+            using var xmlReader = XmlReader.Create(
+                File.OpenRead(envProject.FilePath ?? throw new Exception("Failed to locate env.csproj file"))
+            );
+            ProjectRootElement root = ProjectRootElement.Create(
+                xmlReader,
+                new MSBuildProjectCollection(),
+                preserveFormatting: true
+            );
+            MSBuildProject msbuildProject = new MSBuildProject(root);
 
-        scriptDir = msbuildProject.GetPropertyValue("SpaceEngineersScript");
-        if(scriptDir.Length == 0) { throw new Exception("No SpaceEngineersScript property defined in env.csproj"); }
+            scriptDir = msbuildProject.GetPropertyValue("SpaceEngineersScript");
+            if(scriptDir.Length == 0) { throw new Exception("No SpaceEngineersScript property defined in env.csproj"); }
 
-        return sln;
+            return sln;
+        }
     }
 }

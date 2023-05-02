@@ -50,7 +50,6 @@ public class Preprocessor {
 
     async private Task<List<CSharpSyntaxNode>> Finish() {
         foreach(var doc in from doc in Common.DocumentsIter where doc.Folders.FirstOrDefault() != "obj" select doc) {
-            Console.WriteLine($"Processing {doc.FilePath}");
             await Digest(doc);
         }
         
