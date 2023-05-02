@@ -5,52 +5,40 @@ using Microsoft.CodeAnalysis.FindSymbols;
 
 namespace SeBuild;
 
-public class DeadCodeRemover {
+public class DeadCodeRemover: CompilationPass {
     Dictionary<ISymbol, bool> _alive = new Dictionary<ISymbol, bool>(SymbolEqualityComparer.Default);
-    Solution _sln;
-    Document? _aliveDoc = null;
-    Project _proj;
+    DocumentId? _aliveDoc = null;
 
-    public DeadCodeRemover(Solution sln, Project proj) {
-        _sln = sln;
-        _proj = proj;
+    public DeadCodeRemover(ScriptCommon ctx) : base(ctx) {
+        Task.Run(async () => await Init()).Wait();
     }
 
-    public static async Task<Solution> Build(Solution sln, Project proj, List<Document> docs) =>
-        await new DeadCodeRemover(sln, proj).Build(docs);
-
-    public async Task<Solution> Build(IEnumerable<Document> docs) {
-        _alive.Clear();
-        await Init();
-        foreach(var doc in docs) {
-            _proj = doc.Project;
+    public async override Task Execute() {
+        foreach(var doc in Common.DocumentsIter) {
             var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
             if(syntax is null) { continue; }
             
-            var removed = Run(syntax);
+            var removed = syntax.Accept(new DeadCodeRewriter(this, doc.Project));
             if(removed is null) { continue; }
-            _sln = _sln.WithDocumentSyntaxRoot(doc.Id, removed, PreservationMode.PreserveIdentity);
+            Common.Solution = Common.Solution.WithDocumentSyntaxRoot(doc.Id, removed, PreservationMode.PreserveIdentity);
         }
-
-        return _sln;
     }
     
     /// Add alive annotation to known alive classes
     async Task Init() {
-        foreach(var doc in _proj.Documents) {
+        foreach(var doc in Common.Project.Documents) {
             var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
             if(syntax is null) { continue; }
             var finder = new MainProgramFinder();
             syntax.Accept(finder);
             if(finder.ProgramDecl is not null) {
-                var symbol = await GetSymbol(finder.ProgramDecl);
+                var symbol = await GetSymbol(finder.ProgramDecl, doc.Project);
                 if(symbol is not null) {
                     _alive.Add(symbol, true);
-                    _aliveDoc = doc;
+                    _aliveDoc = doc.Id;
                     var decl = symbol as INamedTypeSymbol;
                     if(decl is not null) {
                         foreach(var member in decl.GetMembers()) {
-                            Console.WriteLine($"alive: {member.Name}");
                             _alive.Add(member, true);
                         }
                     }
@@ -89,14 +77,13 @@ public class DeadCodeRemover {
         }
     }
 
-    public SyntaxNode? Run(CSharpSyntaxNode node) =>
-        node.Accept(new DeadCodeRewriter(this));
-
     class DeadCodeRewriter: CSharpSyntaxRewriter {
         DeadCodeRemover _parent;
+        Project _project;
 
-        public DeadCodeRewriter(DeadCodeRemover parent) {
+        public DeadCodeRewriter(DeadCodeRemover parent, Project p) {
             _parent = parent;
+            _project = p;
         }
 
         public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node) =>
@@ -115,31 +102,31 @@ public class DeadCodeRemover {
             Referenced(node) ? base.VisitStructDeclaration(node) : null;
 
         bool Referenced(CSharpSyntaxNode node) {
-            bool referenced = Task.Run(async () => await _parent.IsSyntaxReferenced(node)).Result;
+            bool referenced = Task.Run(async () => await _parent.IsSyntaxReferenced(node, _project)).Result;
             if(!referenced) {
-                Console.WriteLine($"Eliminating dead code {node.FullSpan}");
+                _parent.Tick();
             }
 
             return referenced;
         }
     }
 
-    async Task<ISymbol?> GetSymbol(SyntaxNode node, Project? proj = null) {
-        var comp = await (proj ?? _proj).GetCompilationAsync();
+    async Task<ISymbol?> GetSymbol(SyntaxNode node, Project proj) {
+        var comp = await proj.GetCompilationAsync();
         var sema = comp?.GetSemanticModel(node.SyntaxTree);
         return sema?.GetDeclaredSymbol(node);
     }
 
-    public async Task<bool> IsSyntaxReferenced(SyntaxNode node) {
-        var symbol = await GetSymbol(node);
+    async Task<bool> IsSyntaxReferenced(SyntaxNode node, Project proj) {
+        var symbol = await GetSymbol(node, proj);
         return symbol is null ? true : await IsSymbolReferenced(symbol);
     }
 
-    public async Task<bool> IsSymbolReferenced(ISymbol sym) {
+    async Task<bool> IsSymbolReferenced(ISymbol sym) {
         if(_alive.ContainsKey(sym)) { return _alive[sym]; }
         
         _alive.Add(sym, false);
-        var refs = await SymbolFinder.FindReferencesAsync(sym, _sln);
+        var refs = await SymbolFinder.FindReferencesAsync(sym, Common.Solution);
         foreach(var reference in refs) {
             foreach(var loc in reference.Locations) {
                 var sourceNode = loc.Location.SourceTree;
@@ -149,7 +136,7 @@ public class DeadCodeRemover {
 
                 var node = sourceTree?.FindNode(loc.Location.SourceSpan);
 
-                if(_aliveDoc is not null && loc.Document.Id == _aliveDoc.Id) {
+                if(_aliveDoc is not null && loc.Document.Id == _aliveDoc) {
                     return _alive[sym] = true;
                 }
                 if(node is null) { continue; }

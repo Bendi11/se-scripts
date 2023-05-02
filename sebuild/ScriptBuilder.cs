@@ -10,112 +10,89 @@ namespace SeBuild;
 using MSBuildProject = Microsoft.Build.Evaluation.Project;
 using MSBuildProjectCollection = Microsoft.Build.Evaluation.ProjectCollection;
 
-public class ScriptWorkspaceContext: IDisposable {
+public class ScriptBuilder: IDisposable {
+    ScriptCommon Common;
     readonly MSBuildWorkspace workspace;
     string scriptDir;
     public string GameScriptDir {
         get => scriptDir;
     }
 
-    static ScriptWorkspaceContext() { MSBuildLocator.RegisterDefaults(); }
+    DeadCodeRemover DeadCodePass;
+    Renamer RenamePass;
 
-    Solution _sln;
+    static ScriptBuilder() { MSBuildLocator.RegisterDefaults(); }
     
     /// <summary>Create a new <c>ScriptWorkspaceContext</c></summary>
     /// <param name="path">
     /// If <c>path</c> is a file, then attempt to open a solution from the given file
     /// Otherwise, search through the directory that <c>path</c> points to to find a .sln file
     /// </param>
-    static async public Task<ScriptWorkspaceContext> Create(string path) {
-        var me = new ScriptWorkspaceContext();
-        await me.Init(path);
+    static async public Task<ScriptBuilder> Create(BuildArgs args) {
+        var me = new ScriptBuilder();
+        var sln = await me.Init(args.SolutionPath);
+
+        var projectId = (
+            sln
+                .Projects
+                .SingleOrDefault(p => p.Name == args.Project)?? throw new Exception($"Solution does not contain a project with name ${args.Project}")
+        ).Id;
+
+        
+        me.Common = new ScriptCommon(sln, projectId, new List<DocumentId>(), args);
+        
+        me.GetDocuments(projectId, new HashSet<ProjectId>());
+        me.DeadCodePass = new DeadCodeRemover(me.Common);
+        me.RenamePass = new Renamer(me.Common);
         return me;
     }
 
     public void Dispose() {
         workspace.Dispose();
     }
-    
-    async public Task<List<CSharpSyntaxNode>> BuildProject(string name, bool rename = false, bool eliminateDead = false) {
-        var project = _sln
-            .Projects
-            .SingleOrDefault(p => p.Name == name) ?? throw new Exception($"Solution does not contain a project with name ${name}");
-        return await BuildProject(project.Id, rename, eliminateDead);
-    }
 
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
-    async public Task<List<CSharpSyntaxNode>> BuildProject(ProjectId p, bool rename = false, bool eliminateDead = false) {
-        var docs = new List<Document>();
-        Solution final = _sln;
-        
-        if(eliminateDead) {
-            GetDocuments(final, p, docs);
-            final = await DeadCodeRemover.Build(
-                final,
-                final.GetProject(p) ?? throw new Exception($"Failed to get project with ID {p}"),
-                docs
-            );
+    async public Task<List<CSharpSyntaxNode>> BuildProject() {
+        if(Common.Args.RemoveDead) {
+            using(var prog = new PassProgress("Eliminating Dead Code")) {
+                DeadCodePass.Progress = prog;
+                await DeadCodePass.Execute();
+            }
         }
 
-        if(rename) {
-            final = await RenameAllSymbols(final, p, new HashSet<ProjectId>());
+        if(Common.Args.Rename) {
+            using(var prog = new PassProgress("Renaming Symbols")) {
+                RenamePass.Progress = prog;
+                await RenamePass.Execute();
+            }
         }
-
-        GetDocuments(final, p, docs);
 
         foreach(var diag in workspace.Diagnostics) {
             Console.WriteLine(diag);
         }
 
-        return await Preprocessor.Build(docs);
+        return await Preprocessor.Build(Common);
     }
 
-    
-    /// <summary>
-    /// Minify a project and all dependencies of the project
-    /// </summary>
-    async private Task<Solution> RenameAllSymbols(Solution sol, ProjectId p, HashSet<ProjectId> renamedProjects, Renamer? other = null) {
-        if(renamedProjects.Contains(p)) return sol; 
-        var renamer = other is null ? new Renamer(workspace, sol, p) : new Renamer(workspace, sol, p, other);
-        sol = await renamer.Run();
-        var newproj = sol.GetProject(p) ?? throw new Exception($"Internal: renamer removed project {p}");
-        
-        renamedProjects.Add(p);
-
-        foreach(var reference in newproj.ProjectReferences) {
-            sol = await RenameAllSymbols(sol, reference.ProjectId, renamedProjects, renamer);
-        }
-
-        return sol;
-    }
-
-    private void GetDocuments(Solution sln, ProjectId id, List<Document> docs) {
-        docs.Clear();
-        GetDocuments(sln, id, docs, new HashSet<ProjectId>());
-    }
-
-    private void GetDocuments(Solution sln, ProjectId id, List<Document> docs, HashSet<ProjectId> loadedProjects) {
+    private void GetDocuments(ProjectId id, HashSet<ProjectId> loadedProjects) {
         if(loadedProjects.Contains(id)) { return; }
         loadedProjects.Add(id);
 
-        var proj = sln.GetProject(id)
-            ?? throw new Exception($"Failed to find project in solution {sln.FilePath} with ID {id}");
-        foreach(var doc in proj.Documents) {
-            docs.Add(doc);
+        foreach(var doc in Common.Solution.GetProject(id)!.DocumentIds) {
+            Common.Documents.Add(doc);
         }
 
-        foreach(var dep in proj.ProjectReferences) {
-            GetDocuments(sln, dep.ProjectId, docs, loadedProjects);
+        foreach(var dep in Common.Project.ProjectReferences) {
+            GetDocuments(dep.ProjectId, loadedProjects);
         }
     }
     
     #pragma warning disable 8618 
-    private ScriptWorkspaceContext() {
+    private ScriptBuilder() {
         workspace = MSBuildWorkspace.Create();
     }
 
-    async private Task Init(string path) {
-        string slnPath = path;
+    async private Task<Solution> Init(string slnPath) {
         bool dir = true;
         try {
             var fa = File.GetAttributes(slnPath);
@@ -123,7 +100,7 @@ public class ScriptWorkspaceContext: IDisposable {
         } catch(FileNotFoundException) {}
 
         if(dir) {
-            foreach(var file in Directory.GetFiles(path)) {
+            foreach(var file in Directory.GetFiles(slnPath)) {
                 if(Path.GetExtension(file).ToUpper().Equals(".SLN")) {
                     slnPath = file;
                     break;
@@ -133,8 +110,9 @@ public class ScriptWorkspaceContext: IDisposable {
 
         Console.WriteLine($"Reading solution file {slnPath}");
         
-        _sln = await workspace.OpenSolutionAsync(slnPath);
-        var envProject = _sln
+        var sln = await workspace.OpenSolutionAsync(slnPath);
+        var envProject = 
+            sln
             .Projects
             .SingleOrDefault(p => p.Name == "env") ?? throw new Exception("No env.csproj added to solution file"); 
 
@@ -151,5 +129,7 @@ public class ScriptWorkspaceContext: IDisposable {
 
         scriptDir = msbuildProject.GetPropertyValue("SpaceEngineersScript");
         if(scriptDir.Length == 0) { throw new Exception("No SpaceEngineersScript property defined in env.csproj"); }
+
+        return sln;
     }
 }

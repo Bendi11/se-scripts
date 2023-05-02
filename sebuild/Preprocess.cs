@@ -9,13 +9,13 @@ namespace SeBuild;
 /// final declarations list
 /// </summary>
 public class Preprocessor {
-    public readonly List<Document> Docs;
+    ScriptCommon Common;
     List<CSharpSyntaxNode> decls;
 
-    async public static Task<List<CSharpSyntaxNode>> Build(List<Document> docs) => await new Preprocessor(docs).Finish(); 
+    async public static Task<List<CSharpSyntaxNode>> Build(ScriptCommon ctx) => await new Preprocessor(ctx).Finish(); 
 
-    private Preprocessor(List<Document> docs, List<CSharpSyntaxNode>? dec = null) {
-        Docs = docs;
+    private Preprocessor(ScriptCommon ctx, List<CSharpSyntaxNode>? dec = null) {
+        Common = ctx;
         decls = dec ?? new List<CSharpSyntaxNode>();
     }
     
@@ -49,7 +49,7 @@ public class Preprocessor {
     }
 
     async private Task<List<CSharpSyntaxNode>> Finish() {
-        foreach(var doc in from doc in Docs where doc.Folders.FirstOrDefault() != "obj" select doc) {
+        foreach(var doc in from doc in Common.DocumentsIter where doc.Folders.FirstOrDefault() != "obj" select doc) {
             Console.WriteLine($"Processing {doc.FilePath}");
             await Digest(doc);
         }

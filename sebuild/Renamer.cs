@@ -6,11 +6,8 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace SeBuild;
 
-public class Renamer {
-        readonly Solution _sln;
-        ProjectId _project;
+public class Renamer: CompilationPass {
         readonly NameGenerator _gen = new NameGenerator();
-        Solution _final;
         public HashSet<string> Renamed = new HashSet<string>();
         static readonly SymbolRenameOptions _opts = new SymbolRenameOptions() {
             RenameOverloads = true,
@@ -100,27 +97,17 @@ public class Renamer {
             }
         }
 
-        public Renamer(Workspace ws, Solution sln, ProjectId project, Renamer other) : this(ws, sln, project) {
-            Renamed = other.Renamed;
-            _gen = other._gen;
-        }
+        public Renamer(ScriptCommon ctx) : base(ctx) {}
 
-        public Renamer(Workspace ws, Solution sln, ProjectId project) {
-            _sln = sln;
-            _final = _sln;
-            _project = project;
-        }
+        /// Get the next symbol to rename
+        async Task<(ISymbol, SemanticModel)?> Symbol() {
+            foreach(var docId in Common.Documents) {
+                var doc = Common.Solution.GetDocument(docId)!;
+                var project = Common.Solution.GetProject(doc.Project.Id)!;
+                var comp = (await project.GetCompilationAsync())!;
 
-        async public Task<(ISymbol, SemanticModel)?> Symbol() {
-            var project = _final.GetProject(_project)
-                ?? throw new Exception($"Failed to locate project with ID {_project}");
-            var comp = await project.GetCompilationAsync()
-                ?? throw new Exception($"Failed to get compilation for {project.Name}");
-            foreach(var doc in project.Documents) {
-                var tree = await doc.GetSyntaxTreeAsync()
-                    ?? throw new Exception($"Failed to get syntax tree for document {doc.FilePath}");
-                var sema = comp.GetSemanticModel(tree)
-                    ?? throw new Exception($"Failed to get semantic model for document {doc.FilePath}");
+                var tree = (await doc.GetSyntaxTreeAsync())!;
+                var sema = comp.GetSemanticModel(tree)!;
                
                 var walker = new RenamerWalker(Renamed, sema);
                 walker.Visit(await tree.GetRootAsync());
@@ -132,14 +119,13 @@ public class Renamer {
 
             return null;
         }
-
-        async public Task<Solution> Run() {
+        
+        /// Rename all identifiers in the given project
+        async public override Task Execute() {
             (ISymbol toRename, SemanticModel sema)? symbolRet = null;
             while((symbolRet = await Symbol()).HasValue) {
                 await RandomName(symbolRet.Value.sema, symbolRet.Value.toRename);
             }
-
-            return _final;
         }
 
         private class RenamerWalker: CSharpSyntaxWalker {
@@ -243,8 +229,9 @@ public class Renamer {
                     name = _gen.Next();
                 }
             }*/
-            Console.WriteLine($"Renaming {symbol.Name} to {name}");
-            _final = await Microsoft.CodeAnalysis.Rename.Renamer.RenameSymbolAsync(_final, symbol, _opts, name);
+            Common.Solution = await Microsoft.CodeAnalysis.Rename.Renamer.RenameSymbolAsync(Common.Solution, symbol, _opts, name);
+            Tick();
+            Msg($"{symbol.Name} -> name");
             Renamed.Add(name);
         }
     }
