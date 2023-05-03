@@ -14,13 +14,29 @@ public class DeadCodeRemover: CompilationPass {
     }
 
     public async override Task Execute() {
+        var tasks = new List<Task>();
+        var map = new Dictionary<DocumentId, SyntaxNode>();
+
         foreach(var doc in Common.DocumentsIter) {
-            var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
-            if(syntax is null) { continue; }
-            
-            var removed = syntax.Accept(new DeadCodeRewriter(this, doc.Project));
-            if(removed is null) { continue; }
-            Common.Solution = Common.Solution.WithDocumentSyntaxRoot(doc.Id, removed, PreservationMode.PreserveIdentity);
+            tasks.Add(Task.Run(async () => {
+                var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
+                if(syntax is null) { return; }
+                
+                var removed = syntax.Accept(new DeadCodeRewriter(this, doc.Project));
+                if(removed is null) { return; }
+
+                lock(map) {
+                    map.Add(doc.Id, removed);
+                }
+            }));
+        }
+
+        await Task.WhenAll(tasks);
+
+        foreach(var (newDocId, newDoc) in map) {
+            Common.Solution = Common
+                .Solution
+                .WithDocumentSyntaxRoot(newDocId, newDoc, PreservationMode.PreserveIdentity);
         }
     }
     

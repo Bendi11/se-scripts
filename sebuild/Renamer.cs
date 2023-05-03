@@ -1,14 +1,59 @@
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 
 namespace SeBuild;
 
 public class Renamer: CompilationPass {
         readonly NameGenerator _gen = new NameGenerator();
-        public HashSet<string> Renamed = new HashSet<string>();
+        MultiMap<ISymbol, ReferencedSymbol> _collectedRefs =
+            new MultiMap<ISymbol, ReferencedSymbol>(SymbolEqualityComparer.Default);
+        MultiMap<DocumentId, TextChange> _modifications = new MultiMap<DocumentId, TextChange>();
+
+        class MultiMap<K, V>: IEnumerable<KeyValuePair<K, List<V>>>
+        where K: notnull {
+            Dictionary<K, List<V>> _multiMap;
+
+
+            public MultiMap(System.Collections.Generic.IEqualityComparer<K>? cmp = null) {
+                _multiMap = 
+                    new Dictionary<K, List<V>>(cmp);
+            }
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+            public IEnumerator<KeyValuePair<K, List<V>>> GetEnumerator() =>
+                _multiMap.GetEnumerator();
+
+            public bool Contains(K symbol) =>
+                _multiMap.ContainsKey(symbol);
+
+            public void Add(K symbol, V reference) {
+                List<V>? references = null;
+                if(_multiMap.TryGetValue(symbol, out references)) {
+                    references.Add(reference);
+                } else {
+                    references = new List<V>();
+                    references.Add(reference);
+                    _multiMap[symbol] = references;
+                }
+            }
+            
+            /// Remove all references for the given symbol, without removing it from the map
+            public void Clear(K symbol) =>
+                _multiMap[symbol] = new List<V>();
+
+            public List<V>? Get(K symbol) {
+                List<V>? value = null;
+                _multiMap.TryGetValue(symbol, out value);
+                return value;
+            }
+        }
+
         static readonly SymbolRenameOptions _opts = new SymbolRenameOptions() {
             RenameOverloads = true,
             RenameFile = false,
@@ -100,7 +145,8 @@ public class Renamer: CompilationPass {
         public Renamer(ScriptCommon ctx) : base(ctx) {}
 
         /// Get the next symbol to rename
-        async Task<(ISymbol, SemanticModel)?> Symbol() {
+        async Task<ISymbol?> Symbol() {
+            var tasks = new List<Task>();
             foreach(var docId in Common.Documents) {
                 var doc = Common.Solution.GetDocument(docId)!;
                 var project = Common.Solution.GetProject(doc.Project.Id)!;
@@ -109,37 +155,56 @@ public class Renamer: CompilationPass {
                 var tree = (await doc.GetSyntaxTreeAsync())!;
                 var sema = comp.GetSemanticModel(tree)!;
                
-                var walker = new RenamerWalker(Renamed, sema);
+                var walker = new RenamerWalker(_collectedRefs, tasks, sema, Common.Solution);
                 walker.Visit(await tree.GetRootAsync());
-
-                if(walker.ToRename != null) {
-                    return (walker.ToRename, sema);
-                }
             }
+
+            await Task.WhenAll(tasks);
 
             return null;
         }
         
         /// Rename all identifiers in the given project
         async public override Task Execute() {
-            (ISymbol toRename, SemanticModel sema)? symbolRet = null;
-            while((symbolRet = await Symbol()).HasValue) {
-                await RandomName(symbolRet.Value.sema, symbolRet.Value.toRename);
+            await Symbol();
+
+            foreach(var (symbol, references) in _collectedRefs) {
+                var newName = _gen.Next();
+
+                Msg($"{symbol.Name} -> {newName}");
+                Tick();
+
+                foreach(var reference in references) {
+                    foreach(var loc in reference.Locations) {
+                        RenameReference(loc, newName);
+                    }
+                }
+            }
+
+            foreach(var (docId, changes) in _modifications) {
+                var doc = Common.Solution.GetDocument(docId)!;
+                var text = await doc.GetTextAsync();
+                var newText = text.WithChanges(changes);
+                Common.Solution = Common.Solution.WithDocumentText(docId, newText);
             }
         }
 
         private class RenamerWalker: CSharpSyntaxWalker {
-            private HashSet<string> _renamed;
-            private SemanticModel _sema;
-            public ISymbol? ToRename { get; private set; } = null;
+            MultiMap<ISymbol, ReferencedSymbol> _references;
+            List<Task> _tasks;
+            SemanticModel _sema;
+            Solution _sln;
 
-            public RenamerWalker(HashSet<string> renamed, SemanticModel sema) {
-                _renamed = renamed;
+            public RenamerWalker(
+                MultiMap<ISymbol,ReferencedSymbol> refs,
+                List<Task> tasks,
+                SemanticModel sema,
+                Solution sln
+            ) {
+                _references = refs;
                 _sema = sema;
-            }
-
-            public override void Visit(SyntaxNode? node) {
-                if(ToRename is null) { base.Visit(node); }
+                _sln = sln;
+                _tasks = tasks;
             }
 
             public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
@@ -178,7 +243,6 @@ public class Renamer: CompilationPass {
             }
 
             public override void VisitVariableDeclaration(VariableDeclarationSyntax vbl) {
-                if(ToRename is not null) { return; }
                 foreach(var name in vbl.Variables) {
                     AttemptRename(name); 
                 }
@@ -190,13 +254,12 @@ public class Renamer: CompilationPass {
             }
 
             private void AttemptRename(SyntaxNode node) {
-                if(ToRename is not null) { return; }
                 var symbol = _sema
                     .GetDeclaredSymbol(node)
                     ?? throw new Exception($"Failed to get symbol for syntax {node.GetText()}");
 
                 if(symbol.Kind != SymbolKind.Namespace &&
-                    !_renamed.Contains(symbol.Name) &&
+                    !_references.Contains(symbol) &&
                     !symbol.IsImplicitlyDeclared &&
                     symbol.Locations.Any((loc) => loc.IsInSource) &&
                     !symbol.IsExtern &&
@@ -204,34 +267,25 @@ public class Renamer: CompilationPass {
                     !(symbol is INamedTypeSymbol && (symbol.Name.Equals("Program"))) &&
                     !(symbol is IMethodSymbol && (symbol.Name.Equals("Save") || symbol.Name.Equals("Main")))
                 ) {
-                    ToRename = symbol;
+                    _references.Clear(symbol);
+                    var refs = _references.Get(symbol)!;
+                    _tasks.Add(Task.Run(async () => {
+                        var symbolReferences = await SymbolFinder.FindReferencesAsync(symbol, _sln);
+                        foreach(var reference in symbolReferences) {
+                            refs.Add(reference); 
+                        }
+                    }));
                     return;
                 }
             }
         }
 
-        async private Task RandomName(SemanticModel sema, ISymbol symbol) {
-            string name = _gen.Next();
-            /*bool conflicts = true;
-            while(conflicts) {
-                conflicts = false;
-                foreach(var loc in symbol.Locations) {
-                    if(sema.LookupSymbols(loc.SourceSpan.Start).Any(collider => collider.Name.Equals(name))) {
-                        conflicts = true;
-                        break;
-                    }
-                }
-
-                conflicts = conflicts || Renamed.Contains(name);
-
-                if(conflicts) {
-                    Console.WriteLine($"Generated symbol {name} (replaces {symbol.Name}) collides, regenerating...");
-                    name = _gen.Next();
-                }
-            }*/
-            Common.Solution = await Microsoft.CodeAnalysis.Rename.Renamer.RenameSymbolAsync(Common.Solution, symbol, _opts, name);
-            Tick();
-            Msg($"{symbol.Name} -> name");
-            Renamed.Add(name);
+        void RenameReference(ReferenceLocation refLoc, string name) {
+            if(refLoc.IsImplicit) { return; }
+            //var sourceNode = refLoc.Location.SourceTree;
+            //if(sourceNode is null) { return; }
+            
+            var change = new TextChange(refLoc.Location.SourceSpan, name);
+            _modifications.Add(refLoc.Document.Id, change);
         }
-    }
+}
