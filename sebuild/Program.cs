@@ -30,8 +30,7 @@ internal class Program {
                     
                     string output = sb.ToString();
                     using var file = new StreamWriter(File.Create(path));
-                    
-                    Console.Write($"Writing output {path}");
+
                     long len = 0;
                     if(build.Minify) {
                         foreach(var tok in Minifier.Minify(output)) { file.Write(tok); len += tok.Length; }
@@ -41,6 +40,9 @@ internal class Program {
                     }
                     
                     sw.Stop();
+
+ 
+                    Console.Write($"{path} -");
 
                     var reduction = ((double)ctx.InitialChars - (double)len) / (double)ctx.InitialChars;
                     var color = reduction switch {

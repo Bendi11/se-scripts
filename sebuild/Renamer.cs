@@ -10,34 +10,34 @@ namespace SeBuild;
 
 public class Renamer: CompilationPass {
         readonly NameGenerator _gen = new NameGenerator();
-        MultiMap<ISymbol, ReferencedSymbol> _collectedRefs =
-            new MultiMap<ISymbol, ReferencedSymbol>(SymbolEqualityComparer.Default);
+        MultiMap<ISymbol, (DocumentId, TextSpan)> _collectedRefs =
+            new MultiMap<ISymbol, (DocumentId, TextSpan)>(SymbolEqualityComparer.Default);
         MultiMap<DocumentId, TextChange> _modifications = new MultiMap<DocumentId, TextChange>();
 
-        class MultiMap<K, V>: IEnumerable<KeyValuePair<K, List<V>>>
+        class MultiMap<K, V>: IEnumerable<KeyValuePair<K, HashSet<V>>>
         where K: notnull {
-            Dictionary<K, List<V>> _multiMap;
+            Dictionary<K, HashSet<V>> _multiMap;
 
 
             public MultiMap(System.Collections.Generic.IEqualityComparer<K>? cmp = null) {
                 _multiMap = 
-                    new Dictionary<K, List<V>>(cmp);
+                    new Dictionary<K, HashSet<V>>(cmp);
             }
 
             System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 
-            public IEnumerator<KeyValuePair<K, List<V>>> GetEnumerator() =>
+            public IEnumerator<KeyValuePair<K, HashSet<V>>> GetEnumerator() =>
                 _multiMap.GetEnumerator();
 
             public bool Contains(K symbol) =>
                 _multiMap.ContainsKey(symbol);
 
             public void Add(K symbol, V reference) {
-                List<V>? references = null;
+                HashSet<V>? references = null;
                 if(_multiMap.TryGetValue(symbol, out references)) {
                     references.Add(reference);
                 } else {
-                    references = new List<V>();
+                    references = new HashSet<V>();
                     references.Add(reference);
                     _multiMap[symbol] = references;
                 }
@@ -45,10 +45,10 @@ public class Renamer: CompilationPass {
             
             /// Remove all references for the given symbol, without removing it from the map
             public void Clear(K symbol) =>
-                _multiMap[symbol] = new List<V>();
+                _multiMap[symbol] = new HashSet<V>();
 
-            public List<V>? Get(K symbol) {
-                List<V>? value = null;
+            public HashSet<V>? Get(K symbol) {
+                HashSet<V>? value = null;
                 _multiMap.TryGetValue(symbol, out value);
                 return value;
             }
@@ -99,7 +99,9 @@ public class Renamer: CompilationPass {
                 
                 var letters = Range(0x41, 0x5A)
                     .Concat(Range(0x61, 0x7A))
-                    .Concat(Range(0xC0, 0xF6))
+                    .Concat(Range(0xC0, 0xD6))
+                    .Concat(Range(0xD8, 0xF6))
+                    //.Concat(Range(0xC0, 0xF6))
                     .Concat(Range(0x100, 0x17F))
                     .Concat(Range(0x180, 0x1BF))
                     .Concat(Range(0x1C4, 0x1CC))
@@ -168,16 +170,19 @@ public class Renamer: CompilationPass {
         async public override Task Execute() {
             await Symbol();
 
+            HashSet<TextSpan> unique = new HashSet<TextSpan>();
+
             foreach(var (symbol, references) in _collectedRefs) {
                 var newName = _gen.Next();
 
                 Msg($"{symbol.Name} -> {newName}");
                 Tick();
 
-                foreach(var reference in references) {
-                    foreach(var loc in reference.Locations) {
-                        RenameReference(loc, newName);
-                    }
+                foreach(var (docId, reference) in references) {
+                    _modifications.Add(
+                        docId,
+                        new TextChange(reference, newName)
+                    );
                 }
             }
 
@@ -190,13 +195,13 @@ public class Renamer: CompilationPass {
         }
 
         private class RenamerWalker: CSharpSyntaxWalker {
-            MultiMap<ISymbol, ReferencedSymbol> _references;
+            MultiMap<ISymbol, (DocumentId, TextSpan)> _references;
             List<Task> _tasks;
             SemanticModel _sema;
             Solution _sln;
 
             public RenamerWalker(
-                MultiMap<ISymbol,ReferencedSymbol> refs,
+                MultiMap<ISymbol, (DocumentId, TextSpan)> refs,
                 List<Task> tasks,
                 SemanticModel sema,
                 Solution sln
@@ -210,6 +215,11 @@ public class Renamer: CompilationPass {
             public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
                 AttemptRename(node);
                 base.VisitClassDeclaration(node);
+            }
+
+            public override void VisitStructDeclaration(StructDeclarationSyntax node) {
+                AttemptRename(node);
+                base.VisitStructDeclaration(node);
             }
 
             public override void VisitEnumDeclaration(EnumDeclarationSyntax node) {
@@ -248,6 +258,11 @@ public class Renamer: CompilationPass {
                 }
             }
 
+            public override void VisitPropertyDeclaration(PropertyDeclarationSyntax node) {
+                AttemptRename(node);
+                base.VisitPropertyDeclaration(node);
+            }
+
             public override void VisitForEachStatement(ForEachStatementSyntax frch) {
                 AttemptRename(frch);
                 base.VisitForEachStatement(frch);
@@ -270,22 +285,41 @@ public class Renamer: CompilationPass {
                     _references.Clear(symbol);
                     var refs = _references.Get(symbol)!;
                     _tasks.Add(Task.Run(async () => {
-                        var symbolReferences = await SymbolFinder.FindReferencesAsync(symbol, _sln);
-                        foreach(var reference in symbolReferences) {
-                            refs.Add(reference); 
-                        }
+                        var AddReferences = async (IEnumerable<ReferencedSymbol> symbolReferences) => {
+                            foreach(var reference in symbolReferences) {
+                                foreach(var loc in reference.Locations) {
+                                    if(!loc.Location.IsInSource || loc.IsImplicit) { continue; }
+
+                                    var node = (await loc.Location.SourceTree!.GetRootAsync()).FindNode(loc.Location.SourceSpan);
+                                    if(node is ConstructorInitializerSyntax) { continue; }
+                                    refs.Add((loc.Document.Id, loc.Location.SourceSpan));
+                                } 
+                            }
+                        };
+
+                        var AddLocations = (IEnumerable<Location> locs) => {
+                            foreach(var loc in locs) {
+                                if(!loc.IsInSource) { continue; }
+                                var doc = _sln.GetDocumentId(loc.SourceTree)!;
+                                refs.Add((doc, loc.SourceSpan));
+                            }
+                        };
+
+                        AddLocations(symbol.Locations);
+                        
+                        switch(symbol) {
+                            case INamedTypeSymbol decl: {
+                                foreach(var ctor in decl.Constructors) {
+                                    AddLocations(ctor.Locations);
+                                    await AddReferences(await SymbolFinder.FindReferencesAsync(ctor, _sln));
+                                }
+                            } break;
+                        };
+
+                        await AddReferences(await SymbolFinder.FindReferencesAsync(symbol, _sln));
                     }));
                     return;
                 }
             }
-        }
-
-        void RenameReference(ReferenceLocation refLoc, string name) {
-            if(refLoc.IsImplicit) { return; }
-            //var sourceNode = refLoc.Location.SourceTree;
-            //if(sourceNode is null) { return; }
-            
-            var change = new TextChange(refLoc.Location.SourceSpan, name);
-            _modifications.Add(refLoc.Document.Id, change);
         }
 }

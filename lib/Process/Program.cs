@@ -6,16 +6,20 @@ namespace IngameScript {
 
     public static class Process {
         public static double Time = 0;
-        static List<IEnumerable> _procs = new List<IEnumerable>();
+        static List<IEnumerator> _procs = new List<IEnumerator>();
 
         public static void RunMain(double timeStep) {
             for(int i = 0; i < _procs.Count; ++i) {
-                bool more = _procs[i].GetEnumerator().MoveNext();
+                bool more = _procs[i].MoveNext();
                 if(!more) { _procs[i] = null; }
             }
         }
 
         public static void Spawn(IEnumerable process) {
+            _procs.Add(process.GetEnumerator());
+        }
+
+        public static void Spawn(IEnumerator process) {
             _procs.Add(process);
         }
 

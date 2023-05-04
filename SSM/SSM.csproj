@@ -13,6 +13,7 @@
     <ProjectReference Include="../lib/Process/Process.csproj" />
     <ProjectReference Include="../lib/Log/Log.csproj" />
     <ProjectReference Include="../lib/PID/PID.csproj" />
+    <ProjectReference Include="../arms/Seeker/Seeker.csproj" />
     <Reference Include="System.Collections.Immutable">
       <HintPath>$(MDKGameBinPath)\System.Collections.Immutable.dll</HintPath>
       <Private>false</Private>

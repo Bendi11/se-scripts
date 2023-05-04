@@ -20,7 +20,7 @@ using System.Collections.Immutable;
 
 namespace IngameScript {
     /// A seeker head utilizing a camera to raycast to accquire and track other ships
-    class Seeker {
+    public class Seeker {
         /// Different types of scan patterns that can be utilized to provide target accquisition and tracking data
         public enum ScanMode {
             /// Provides only target accquisition and ranging data while also scanning for new contacts
@@ -107,7 +107,7 @@ namespace IngameScript {
             _patternProgress = 0f;
         }
 
-        private IEnumerator<Nil> SeekProc() {
+        public IEnumerator<Nil> SeekProc() {
             for(;;) {
                 _patternProgress += (float)Process.Time * ScanSpeedMultiplier;
                 _patternProgress = (_patternProgress > 1) ? 0 : _patternProgress;

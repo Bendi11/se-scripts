@@ -57,7 +57,7 @@ public class ScriptBuilder: IDisposable {
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
     async public Task<List<CSharpSyntaxNode>> BuildProject() {
         //Collect diagnostics before renaming identifiers
-        var diags = new List<Diagnostic>();//(await Common.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning);
+        var diags = (await Common.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning);
 
         if(Common.Args.RemoveDead) {
             using(var prog = new PassProgress("Eliminating Dead Code")) {

@@ -6,8 +6,16 @@ using Microsoft.CodeAnalysis.FindSymbols;
 namespace SeBuild;
 
 public class DeadCodeRemover: CompilationPass {
-    Dictionary<ISymbol, bool> _alive = new Dictionary<ISymbol, bool>(SymbolEqualityComparer.Default);
+    Dictionary<ISymbol, AliveMarker> _alive = new Dictionary<ISymbol, AliveMarker>(SymbolEqualityComparer.Default);
     DocumentId? _aliveDoc = null;
+
+    class AliveMarker {
+        public bool Alive;
+        public SemaphoreSlim Semaphore = new SemaphoreSlim(1, 1);
+        public AliveMarker(bool alive) {
+            Alive = alive;
+        }
+    }
 
     public DeadCodeRemover(ScriptCommon ctx) : base(ctx) {
         Task.Run(async () => await Init()).Wait();
@@ -17,16 +25,18 @@ public class DeadCodeRemover: CompilationPass {
         var tasks = new List<Task>();
         var map = new Dictionary<DocumentId, SyntaxNode>();
 
-        foreach(var doc in Common.DocumentsIter) {
+        foreach(var docs in Common.DocumentsIter.Chunk(2)) {
             tasks.Add(Task.Run(async () => {
-                var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
-                if(syntax is null) { return; }
-                
-                var removed = syntax.Accept(new DeadCodeRewriter(this, doc.Project));
-                if(removed is null) { return; }
+                foreach(var doc in docs) {
+                    var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
+                    if(syntax is null) { return; }
+                    
+                    var removed = syntax.Accept(new DeadCodeRewriter(this, doc.Project));
+                    if(removed is null) { return; }
 
-                lock(map) {
-                    map.Add(doc.Id, removed);
+                    lock(map) {
+                        map.Add(doc.Id, removed);
+                    }
                 }
             }));
         }
@@ -50,12 +60,12 @@ public class DeadCodeRemover: CompilationPass {
             if(finder.ProgramDecl is not null) {
                 var symbol = await GetSymbol(finder.ProgramDecl, doc.Project);
                 if(symbol is not null) {
-                    _alive.Add(symbol, true);
+                    _alive.Add(symbol, new AliveMarker(true));
                     _aliveDoc = doc.Id;
                     var decl = symbol as INamedTypeSymbol;
                     if(decl is not null) {
                         foreach(var member in decl.GetMembers()) {
-                            _alive.Add(member, true);
+                            _alive.Add(member, new AliveMarker(true));
                         }
                     }
                     break;
@@ -114,11 +124,16 @@ public class DeadCodeRemover: CompilationPass {
         public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node) =>
             Referenced(node) ? base.VisitClassDeclaration(node) : null;
 
+        public override SyntaxNode? VisitConstructorDeclaration(ConstructorDeclarationSyntax node) =>
+            Referenced(node) ? base.VisitConstructorDeclaration(node) : null;
+
         public override SyntaxNode? VisitStructDeclaration(StructDeclarationSyntax node) =>
             Referenced(node) ? base.VisitStructDeclaration(node) : null;
 
         bool Referenced(CSharpSyntaxNode node) {
-            bool referenced = Task.Run(async () => await _parent.IsSyntaxReferenced(node, _project)).Result;
+            var task = Task.Run(async () => await _parent.IsSyntaxReferenced(node, _project));
+            task.Wait();
+            bool referenced = task.Result;
             if(!referenced) {
                 _parent.Tick();
             }
@@ -139,38 +154,51 @@ public class DeadCodeRemover: CompilationPass {
     }
 
     async Task<bool> IsSymbolReferenced(ISymbol sym) {
-        if(_alive.ContainsKey(sym)) { return _alive[sym]; }
-        
-        _alive.Add(sym, false);
-        var refs = await SymbolFinder.FindReferencesAsync(sym, Common.Solution);
-        foreach(var reference in refs) {
-            foreach(var loc in reference.Locations) {
-                var sourceNode = loc.Location.SourceTree;
-                if(sourceNode is null) { continue; }
-
-                var sourceTree = await sourceNode.GetRootAsync();
-
-                var node = sourceTree?.FindNode(loc.Location.SourceSpan);
-
-                if(_aliveDoc is not null && loc.Document.Id == _aliveDoc) {
-                    return _alive[sym] = true;
-                }
-                if(node is null) { continue; }
-                ISymbol? symbol = null;
-
-                while(node is not null && symbol is null) {
-                    symbol = await GetSymbol(node, loc.Document.Project);
-                    node = node.Parent;
-                }
-                
-                if(symbol is null) { continue; }
-                if(symbol.CanBeReferencedByName) {
-                    if(await IsSymbolReferenced(symbol)) {
-                        return _alive[sym] = true;
-                    }
-                }
-            } 
+        AliveMarker? existing;
+        bool exists = false;
+        lock(_alive) {
+            exists = _alive.TryGetValue(sym, out existing);
         }
+
+        if(exists) {
+            await existing!.Semaphore.WaitAsync();
+            try {
+                return existing.Alive;
+            } finally { existing.Semaphore.Release(); }
+        }
+        
+        var marker = new AliveMarker(false);
+        await marker.Semaphore.WaitAsync();
+        try {
+            lock(_alive) { _alive.Add(sym, marker); }
+            var refs = await SymbolFinder.FindReferencesAsync(sym, Common.Solution);
+            foreach(var reference in refs) {
+                foreach(var loc in reference.Locations) {
+                    if(_aliveDoc is not null && loc.Document.Id == _aliveDoc) {
+                        return marker.Alive = true;
+                    }
+                    var sourceNode = loc.Location.SourceTree;
+                    if(sourceNode is null) { continue; }
+
+                    var sourceTree = await sourceNode.GetRootAsync();
+
+                    var node = sourceTree?.FindNode(loc.Location.SourceSpan);
+
+                    if(node is null) { continue; }
+                    ISymbol? symbol = null;
+
+                    while(node is not null && (symbol is null || symbol is ILocalSymbol)) {
+                        symbol = await GetSymbol(node, loc.Document.Project);
+                        node = node.Parent;
+                    }
+                    
+                    if(symbol is null || symbol == sym) { continue; }
+                    if(await IsSymbolReferenced(symbol)) {
+                        return marker.Alive = true;
+                    }
+                } 
+            }
+        } finally { marker.Semaphore.Release(); }
 
         return false;
     }

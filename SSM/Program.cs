@@ -33,11 +33,18 @@ namespace IngameScript {
             Log.Init(Me.GetSurface(0));
 
             try {
-                seeker = new Seeker(GridTerminalSystem, Me, Runtime);
                 List<IMyGyro> gyros = new List<IMyGyro>();
                 GridTerminalSystem.GetBlocksOfType(gyros, (gyro) => gyro.IsSameConstructAs(Me));
                 gyro = new GyroController(gyros, seeker.Cam);
                 gyro.Pid = new PID(0.5f, 0f, 0f);
+
+                var cameras = new List<IMyCameraBlock>();
+                GridTerminalSystem.GetBlocksOfType(cameras, (block) => block.IsSameConstructAs(Me) && MyIni.HasSection(block.CustomData, "seek"));
+                if(cameras.Count != 1) { Log.Panic($"Expecting 1 camera with a [seek] tag, found {cameras.Count}"); }
+                var camera = cameras.First();
+
+                seeker = new Seeker(camera);
+                
                 
                 MyIni ini = new MyIni();
                 if(ini.TryParse(Me.CustomData)) {
@@ -50,7 +57,7 @@ namespace IngameScript {
                     seeker.ScanElevationRange = (float)ini.Get("seeker", "elr").ToDouble(seeker.ScanElevationRange);
                     seeker.ScanSpeedMultiplier = mul;
                 }
-                
+
                 warheads = new List<IMyWarhead>();
                 GridTerminalSystem.GetBlocksOfType(warheads, (block) => block.IsSameConstructAs(Me));
                 foreach(var bomb in warheads) {
@@ -88,7 +95,7 @@ namespace IngameScript {
                     sensor.BottomExtend =
                     2;
                 
-                seeker.Seek.Begin();
+                Process.Spawn(seeker.SeekProc());
                 Runtime.UpdateFrequency |= UpdateFrequency.Once;
             } catch(Exception e) {
                 Log.Panic(e.Message);
@@ -102,14 +109,9 @@ namespace IngameScript {
         public void Main(string argument, UpdateType updateSource) {
             try {
                 if(updateSource.HasFlag(UpdateType.Once)) {
-                    seeker.Tick();
+                    Process.RunMain(Runtime.TimeSinceLastRun.TotalSeconds);
                     gyro.Step();
                     thrust.Step();
-                    for(uint i = 0; i < scansPerTick; ++i) {
-                        try {
-                            seeker.Seek.Poll();
-                        } catch(Exception e) { Log.Panic(e.Message); }
-                    }
 
                     if(seeker.Locked && !connector.IsConnected) { 
                         gyro.Enable();
@@ -120,11 +122,11 @@ namespace IngameScript {
                         }
                         thrust.Enabled = true;
                         
-                        var pos = seeker.Tracked.body.Position;
+                        var pos = seeker.Tracked.Body.Position;
                         var dist = Vector3.Distance(pos, seeker.Cam.GetPosition());
-                        float secondsSincePing = (float)(seeker.Ticks - seeker.Tracked.tick) * 0.016f;
+                        float secondsSincePing = (float)(Process.Time - seeker.Tracked.Time);
                         if(
-                                sensor.IsActive && sensor.LastDetectedEntity.EntityId == seeker.Tracked.body.EntityId
+                                sensor.IsActive && sensor.LastDetectedEntity.EntityId == seeker.Tracked.Body.EntityId
                                 || (
                                     !sensor.IsWorking &&
                                     dist < 5
@@ -135,8 +137,8 @@ namespace IngameScript {
                             }
                         }
                         
-                        var vR = seeker.Tracked.body.Velocity - seeker.Cam.CubeGrid.LinearVelocity;
-                        var r = seeker.Tracked.body.Position - seeker.Cam.GetPosition();
+                        var vR = seeker.Tracked.Body.Velocity - seeker.Cam.CubeGrid.LinearVelocity;
+                        var r = seeker.Tracked.Body.Position - seeker.Cam.GetPosition();
 
                         var omega = (r.Cross(vR)) / (r.Dot(r));
                         
