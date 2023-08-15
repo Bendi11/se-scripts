@@ -4,14 +4,15 @@
     <LangVersion>6</LangVersion>
   </PropertyGroup>
   <ImportGroup>
-    <Import Project="../../env.csproj" />
+      <Import Project="../env.csproj" />
   </ImportGroup>
   <!-- Credit: https://github.com/malware-dev/MDK-SE/tree/master/Source/IngameScriptTemplate-->
   <ItemGroup>
-    <ProjectReference Include="../../lib/Sendy/Sendy.csproj" />
-    <ProjectReference Include="../../lib/Log/Log.csproj" />
-    <ProjectReference Include="../SendyLink/SendyLink.csproj" />
-    <ProjectReference Include="../../lib/Process/Process.csproj" />
+    <ProjectReference Include="../lib/Log/Log.csproj" />
+    <ProjectReference Include="../lib/Config/Config.csproj" />
+    <ProjectReference Include="../lib/Gyro/Process.csproj" />
+    <ProjectReference Include="../arms/Seeker/Seeker.csproj" />
+    <ProjectReference Include="../arms/TGP/TGP.csproj" />
     <Reference Include="System.Collections.Immutable">
       <HintPath>$(MDKGameBinPath)\System.Collections.Immutable.dll</HintPath>
       <Private>false</Private>

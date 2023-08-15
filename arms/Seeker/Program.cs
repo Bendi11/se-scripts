@@ -62,12 +62,12 @@ namespace IngameScript {
         }
         public float ScanAzimuth = 0;
         public bool Locked {
-            get { return TrackedEntity != -1 && _contacts.ContainsKey(TrackedEntity); }
+            get { return TrackedEntity != null; }
         }
 
 
         /// The entity to lock automatically
-        public long TrackedEntity = -1;
+        public Contact TrackedEntity = null;
 
         public Contact Tracked {
             get {
@@ -83,9 +83,6 @@ namespace IngameScript {
         float _azimuthRange;
 
         public IMyCameraBlock Cam;
-
-        /// A map of entity IDs to their corresponding contact
-        Dictionary<long, Contact> _contacts = new Dictionary<long, Contact>();
         
         /// A contact accquired by a ranging raycast with contact time and position data
         public class Contact {
