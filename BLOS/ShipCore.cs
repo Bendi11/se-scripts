@@ -4,27 +4,9 @@ using System.Collections.Generic;
 /// <summary>
 /// <para>
 /// BLOS General Purpose Flight Controller
-/// An attempt at a one-size-fits-all flight controller script with drivers for nearly any device,
+/// An attempt at a one-size-fits-all flight controller script with drivers for any device,
 /// making it easy to create and pilot any combination of ship devices with only a few flags.
 /// </para>
-/// 
-/// <para>
-/// Code size and complexity are controlled by compiler defines, used to reduce script workload when
-/// a ship does not require driver support for a device.
-/// The following compiler defines will enable / disable functionality of the FC:
-/// </para>
-///
-/// <list type = "table">
-/// <listheader>
-///     <term>BLOS Compiler Defines</term>
-///     <description>Flags to enable for driver support</description>
-/// </listheader>
-/// <item>
-///     <term>BLOS_DRVR_ALL</term>
-///     <description>Enables all drivers for every part, usefull for testing a design without compiling a custom firmware</description>
-/// </item>
-/// </list>
-/// </summary>
 public sealed class ShipCore {
     /// A map of entity IDs to the contact data they correspond to
     Dictionary<long, ContactData> _contacts = new Dictionary<long, ContactData>();
