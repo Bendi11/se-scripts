@@ -32,6 +32,10 @@ public class Preprocessor {
         public override void VisitEnumDeclaration(EnumDeclarationSyntax node) {
             lock(decls) { decls.Add(node); }
         }
+
+        public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax node) {
+            lock(decls) { decls.Add(node); }
+        }
         
         public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
             if(

@@ -10,9 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="../lib/Log/Log.csproj" />
     <ProjectReference Include="../lib/Config/Config.csproj" />
-    <ProjectReference Include="../lib/Gyro/Process.csproj" />
-    <ProjectReference Include="../arms/Seeker/Seeker.csproj" />
-    <ProjectReference Include="../arms/TGP/TGP.csproj" />
+    <ProjectReference Include="../lib/Process/Process.csproj" />
     <Reference Include="System.Collections.Immutable">
       <HintPath>$(MDKGameBinPath)\System.Collections.Immutable.dll</HintPath>
       <Private>false</Private>

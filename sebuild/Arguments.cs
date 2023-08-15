@@ -27,4 +27,3 @@ public class BuildArgs {
     )]
     public bool RemoveDead { get; set; }
 }
-
