@@ -52,7 +52,7 @@ public class DeadCodeRemover: CompilationPass {
     
     /// Add alive annotation to known alive classes
     async Task Init() {
-        foreach(var doc in Common.Project.Documents) {
+        foreach(var doc in Common.DocumentsIter) {
             var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
             if(syntax is null) { continue; }
             var finder = new MainProgramFinder();

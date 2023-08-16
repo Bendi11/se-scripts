@@ -53,7 +53,7 @@ public sealed class ShipCore {
             if(device is ISensorDevice) { _sensors.Add((ISensorDevice)device); }
             if(device is IMovementControllerDevice) {
                 _movement.Add((IMovementControllerDevice)device);
-                if(_move == null) { _move = (IMovementControllerDevice)device; }
+                //if(_move == null) { _move = (IMovementControllerDevice)device; }
             }
         }
 
