@@ -1,11 +1,15 @@
 using Sandbox.ModAPI.Ingame;
-using VRageMath;
+
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
         public Program() {
             var cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
-            ShipCore.Create();
+            ShipCore.Create(
+                GridTerminalSystem,
+                Me,
+                new StandardMovementController("movement")
+            );
             Runtime.UpdateFrequency |= UpdateFrequency.Update10;
         }
 
@@ -14,9 +18,7 @@ namespace IngameScript {
         }
 
         public void Main(string argument, UpdateType updateSource) {
-            if(!updateSource.HasFlag(UpdateType.Update10)) {
-            
-            }
+            Process.RunMain(Runtime.TimeSinceLastRun.TotalSeconds);
         }
     }
 }

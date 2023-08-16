@@ -13,7 +13,9 @@ public interface IDevice {
 
 /// A specialization of an IDevice that provides ship movement and orientation control to the flight controller
 public interface IMovementControllerDevice : IDevice {
-
+    /// Get a process that will constantly update output devices to maintain orientation and velocity,
+    /// and **must** disable all controls when the task is cancelled
+    IEnumerator Control();
     /// The orientation in world frame that the flight controller requests
     Vector3D TargetOrientWorld { get; set; }
     /// The velocity in world frame that the flight controller requests

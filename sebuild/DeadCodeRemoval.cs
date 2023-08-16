@@ -25,7 +25,7 @@ public class DeadCodeRemover: CompilationPass {
         var tasks = new List<Task>();
         var map = new Dictionary<DocumentId, SyntaxNode>();
 
-        foreach(var docs in Common.DocumentsIter.Chunk(2)) {
+        foreach(var docs in Common.DocumentsIter.Chunk(3)) {
             tasks.Add(Task.Run(async () => {
                 foreach(var doc in docs) {
                     var syntax = await doc.GetSyntaxRootAsync() as CSharpSyntaxNode;
@@ -148,34 +148,54 @@ public class DeadCodeRemover: CompilationPass {
         return sema?.GetDeclaredSymbol(node);
     }
 
-    async Task<bool> IsSyntaxReferenced(SyntaxNode node, Project proj) {
-        var symbol = await GetSymbol(node, proj);
-        return symbol is null ? true : await IsSymbolReferenced(symbol);
+    async Task<SymbolInfo?> GetReferencedSymbol(SyntaxNode node, Project proj) {
+        var comp = await proj.GetCompilationAsync();
+        var sema = comp?.GetSemanticModel(node.SyntaxTree, true);
+        return sema?.GetSymbolInfo(node);
     }
 
-    async Task<bool> IsSymbolReferenced(ISymbol sym) {
-        AliveMarker? existing;
-        bool exists = false;
-        lock(_alive) {
-            exists = _alive.TryGetValue(sym, out existing);
-        }
+    async Task<bool> IsSyntaxReferenced(SyntaxNode node, Project proj) {
+        var symbol = await GetSymbol(node, proj);
+        return symbol is null ? true : await IsSymbolReferenced(symbol, true) == ReferencedResult.Referenced;
+    }
 
-        if(exists) {
-            await existing!.Semaphore.WaitAsync();
-            try {
-                return existing.Alive;
-            } finally { existing.Semaphore.Release(); }
-        }
+    enum ReferencedResult {
+        Referenced,
+        NotReferenced,
+        Circular,
+    }
+    
+    async Task<ReferencedResult> IsSymbolReferenced(ISymbol sym, bool forceWait) {
+        AliveMarker? marker;
+        bool exists = false;
+
+        Monitor.Enter(_alive);
+            exists = _alive.TryGetValue(sym, out marker);
+            if(exists && marker is not null) {
+                Monitor.Exit(_alive);
+                if(!forceWait && marker!.Semaphore.CurrentCount == 0) {
+                    return ReferencedResult.Circular;
+                }
+
+                await marker.Semaphore.WaitAsync();
+                try {
+                    return marker.Alive ? ReferencedResult.Referenced : ReferencedResult.NotReferenced;
+                } finally { marker.Semaphore.Release(); }
+            }
+
+            marker = new AliveMarker(false);
+            marker.Semaphore.Wait();
+            _alive.TryAdd(sym, marker);
+        Monitor.Exit(_alive);
         
-        var marker = new AliveMarker(false);
-        await marker.Semaphore.WaitAsync();
+
         try {
-            lock(_alive) { _alive.Add(sym, marker); }
             var refs = await SymbolFinder.FindReferencesAsync(sym, Common.Solution);
             foreach(var reference in refs) {
                 foreach(var loc in reference.Locations) {
                     if(_aliveDoc is not null && loc.Document.Id == _aliveDoc) {
-                        return marker.Alive = true;
+                        marker.Alive = true;
+                        return ReferencedResult.Referenced;
                     }
                     var sourceNode = loc.Location.SourceTree;
                     if(sourceNode is null) { continue; }
@@ -192,14 +212,19 @@ public class DeadCodeRemover: CompilationPass {
                         node = node.Parent;
                     }
                     
-                    if(symbol is null || symbol == sym) { continue; }
-                    if(await IsSymbolReferenced(symbol)) {
-                        return marker.Alive = true;
+                    if(symbol is null || SymbolEqualityComparer.Default.Equals(symbol, sym)) { continue; }
+                    var res = await IsSymbolReferenced(symbol, false);
+                    if(res == ReferencedResult.Circular) {
+                        marker.Alive = true;
+                        return ReferencedResult.Referenced;
+                    } else if(res == ReferencedResult.Referenced) {
+                        marker.Alive = true;
+                        return ReferencedResult.Referenced;
                     }
                 } 
             }
         } finally { marker.Semaphore.Release(); }
 
-        return false;
+        return ReferencedResult.NotReferenced;
     }
 }

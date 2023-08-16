@@ -4,3 +4,4 @@ obj
 /sebuild/pkg/*
 final
 /.config
+/test.txt

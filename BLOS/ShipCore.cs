@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Sandbox.ModAPI.Ingame;
 
 
 /// <summary>
@@ -8,6 +9,9 @@ using System.Collections.Generic;
 /// making it easy to create and pilot any combination of ship devices with only a few flags.
 /// </para>
 public sealed class ShipCore {
+    public IMyTerminalBlock Ref;
+    public IMyGridTerminalSystem GTS;
+
     /// A map of entity IDs to the contact data they correspond to
     Dictionary<long, ContactData> _contacts = new Dictionary<long, ContactData>();
     /// A collection of all sensors on the craft
@@ -16,12 +20,27 @@ public sealed class ShipCore {
     List<IMovementControllerDevice> _movement = new List<IMovementControllerDevice>();
     /// The selected movement and orientation controller
     IMovementControllerDevice _move;
+    /// A list of all control input devices
+    List<IMyShipController> _inputs;
+    /// The ship controller to use for movement and orientation controls
+    IMyShipController MovementInput;
+
+    
+    /// The last timestamp that the ship's mass was calculated at
+    double _lastShipMassUpdateSec = 0;
+    /// Re-calculate the ship's mass every n seconds
+    const double UPDATE_SHIP_MASS_SECS = 15;
+    
+    /// Get the consistently-updated mass of the ship
+    public float ShipMass;
 
     public static ShipCore I = null;
     
     /// Create a new flight controller using the device drivers given
-    public static void Create(params IDevice[] devices) {
+    public static void Create(IMyGridTerminalSystem gts, IMyTerminalBlock reference, params IDevice[] devices) {
         I = new ShipCore();
+        I.Ref = reference;
+        I.GTS = gts;
         I.Init(devices);
     }
     
@@ -37,6 +56,11 @@ public sealed class ShipCore {
                 if(_move == null) { _move = (IMovementControllerDevice)device; }
             }
         }
+
+        Process.Spawn(_move.Control());
+        
+        GTS.GetBlocksOfType(_inputs);
+        MovementInput = _inputs[0];
     }
 
     public struct Hooks {
