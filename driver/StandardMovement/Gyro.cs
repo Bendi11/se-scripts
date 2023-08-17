@@ -75,4 +75,3 @@ public class GyroController {
         else { return angle; }
     }
 }
-

@@ -8,6 +8,7 @@ namespace IngameScript {
             ShipCore.Create(
                 GridTerminalSystem,
                 Me,
+                Runtime,
                 new StandardMovementController("movement")
             );
             Runtime.UpdateFrequency |= UpdateFrequency.Update10;
@@ -18,7 +19,7 @@ namespace IngameScript {
         }
 
         public void Main(string argument, UpdateType updateSource) {
-            Process.RunMain(Runtime.TimeSinceLastRun.TotalSeconds);
+            ShipCore.I.RunMain();
         }
     }
 }

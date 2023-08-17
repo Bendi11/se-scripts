@@ -11,8 +11,8 @@ using VRageMath;
 public class Thrust {
     public Vector3 VelLocal;
     public Vector3 VelWorld {
-        get { return Vector3.TransformNormal(VelLocal, Ref.WorldMatrix); }
-        set { VelLocal = Vector3.TransformNormal(value, MatrixD.Transpose(Ref.WorldMatrix)); }
+        get { return Vector3.TransformNormal(VelLocal, ShipCore.I.Ref.WorldMatrix); }
+        set { VelLocal = Vector3.TransformNormal(value, MatrixD.Transpose(ShipCore.I.Ref.WorldMatrix)); }
     }
     
     bool _enabled = false;
@@ -26,7 +26,6 @@ public class Thrust {
         }
     }
 
-    public IMyTerminalBlock Ref;
     public float Rate = 0.7F;
     float _mass;
     List<IMyThrust> _all = new List<IMyThrust>();
@@ -40,7 +39,7 @@ public class Thrust {
         };
         
         ShipCore.I.GTS.GetBlocksOfType(_all);
-        var mat = Ref.WorldMatrix;
+        var mat = ShipCore.I.Ref.WorldMatrix;
         _fw = fill(mat.Forward);
         _bw = fill(mat.Backward);
         _right = fill(mat.Right);
@@ -50,8 +49,8 @@ public class Thrust {
     }
     
     public void Step() {
-        if(!_enabled) return;
-        var force = (VelLocal - Vector3D.TransformNormal(Ref.CubeGrid.LinearVelocity, MatrixD.Transpose(Ref.WorldMatrix))) * ShipCore.I.ShipMass * Rate;
+        //if(!_enabled) return;
+        var force = (VelLocal - Vector3D.TransformNormal(ShipCore.I.Ref.CubeGrid.LinearVelocity, MatrixD.Transpose(ShipCore.I.Ref.WorldMatrix))) * ShipCore.I.ShipMass * Rate;
         ApplyAccel(_right, force.X); 
         ApplyAccel(_left, -force.X);
         ApplyAccel(_up, force.Y);
@@ -62,7 +61,7 @@ public class Thrust {
 
     private void ApplyAccel(List<IMyThrust> list, double accel) {
         foreach(var th in list) {
-            th.ThrustOverride = Math.Max((float)accel, 0.001F);
+            th.ThrustOverride = Math.Max((float)accel, 0.01F);
             accel -= th.MaxEffectiveThrust;
         }
     }

@@ -10,9 +10,10 @@ namespace SeBuild;
 
 public class Renamer: CompilationPass {
     readonly NameGenerator _gen = new NameGenerator();
+    
+    HashSet<ISymbol> _handled = new HashSet<ISymbol>();
+    HashSet<(DocumentId, TextSpan, string)> _renames = new HashSet<(DocumentId, TextSpan, string)>();
 
-    MultiMap<ISymbol, (DocumentId, TextSpan)> _collectedRefs =
-        new MultiMap<ISymbol, (DocumentId, TextSpan)>(SymbolEqualityComparer.Default);
     MultiMap<DocumentId, TextChange> _modifications = new MultiMap<DocumentId, TextChange>();
 
     class MultiMap<K, V>: IEnumerable<KeyValuePair<K, HashSet<V>>>
@@ -47,6 +48,9 @@ public class Renamer: CompilationPass {
         /// Remove all references for the given symbol, without removing it from the map
         public void Clear(K symbol) =>
             _multiMap[symbol] = new HashSet<V>();
+        
+        /// Remap the `from` key to track changes to the `to` key's list
+        public void Remap(K from, K to) => _multiMap[from] = _multiMap[to];
 
         public HashSet<V>? Get(K symbol) {
             HashSet<V>? value = null;
@@ -147,9 +151,10 @@ public class Renamer: CompilationPass {
 
     public Renamer(ScriptCommon ctx) : base(ctx) {}
 
-    /// Get the next symbol to rename
-    async Task<ISymbol?> Symbol() {
-        var tasks = new List<Task>();
+    delegate RenamerWalkerBase ConstructRenamer(SemanticModel sema, List<Task> tasks);
+
+    async Task RenameWith<T>(ConstructRenamer New) where T: RenamerWalkerBase {
+        List<Task> tasks = new List<Task>();
         foreach(var docId in Common.Documents) {
             var doc = Common.Solution.GetDocument(docId)!;
             var project = Common.Solution.GetProject(doc.Project.Id)!;
@@ -158,31 +163,31 @@ public class Renamer: CompilationPass {
             var tree = (await doc.GetSyntaxTreeAsync())!;
             var sema = comp.GetSemanticModel(tree)!;
            
-            var walker = new RenamerWalker(_collectedRefs, tasks, sema, Common.Solution);
+            var walker = New(sema, tasks);
             walker.Visit(await tree.GetRootAsync());
         }
 
         await Task.WhenAll(tasks);
+    }
 
-        return null;
+    /// Get the next symbol to rename
+    async Task Symbol() {
+        await RenameWith<InterfaceRenamerWalker>((sema, tasks) => new InterfaceRenamerWalker(this, sema, tasks));
+        await RenameWith<RenamerWalker>((sema, tasks) => new RenamerWalker(this, sema, tasks));
     }
     
     /// Rename all identifiers in the given project
     async public override Task Execute() {
         await Symbol();
 
-        foreach(var (symbol, references) in _collectedRefs) {
-            var newName = _gen.Next();
-
-            Msg($"{symbol.Name} -> {newName}");
+        foreach(var (docId, reference, name) in _renames) {
+            //Msg($"{symbol.Name} -> {newName}");
             Tick();
 
-            foreach(var (docId, reference) in references) {
-                _modifications.Add(
-                    docId,
-                    new TextChange(reference, newName)
-                );
-            }
+            _modifications.Add(
+                docId,
+                new TextChange(reference, name)
+            );
         }
 
         foreach(var (docId, changes) in _modifications) {
@@ -193,22 +198,11 @@ public class Renamer: CompilationPass {
         }
     }
 
-    private class RenamerWalker: CSharpSyntaxWalker {
-        MultiMap<ISymbol, (DocumentId, TextSpan)> _references;
-        List<Task> _tasks;
-        SemanticModel _sema;
-        Solution _sln;
-
+    private class RenamerWalker: RenamerWalkerBase {
         public RenamerWalker(
-            MultiMap<ISymbol, (DocumentId, TextSpan)> refs,
-            List<Task> tasks,
-            SemanticModel sema,
-            Solution sln
-        ) {
-            _references = refs;
-            _sema = sema;
-            _sln = sln;
-            _tasks = tasks;
+            Renamer parent, SemanticModel sema, List<Task> tasks
+        ): base(parent, sema, tasks) {
+            
         }
 
         public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
@@ -224,11 +218,6 @@ public class Renamer: CompilationPass {
         public override void VisitEnumDeclaration(EnumDeclarationSyntax node) {
             AttemptRename(node);
             base.VisitEnumDeclaration(node);
-        }
-
-        public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax node) {
-            AttemptRename(node);
-            base.VisitInterfaceDeclaration(node);
         }
 
         public override void VisitEnumMemberDeclaration(EnumMemberDeclarationSyntax node) {
@@ -266,14 +255,50 @@ public class Renamer: CompilationPass {
             AttemptRename(frch);
             base.VisitForEachStatement(frch);
         }
+    }
 
-        private void AttemptRename(SyntaxNode node) {
+    private class InterfaceRenamerWalker: RenamerWalkerBase {
+        public InterfaceRenamerWalker(
+            Renamer parent, SemanticModel sema, List<Task> tasks
+        ): base(parent, sema, tasks) {
+            
+        }
+        
+        public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax node) {
+            AttemptRename(node);
+            foreach(var member in node.Members) {
+                AttemptRename(member);
+                base.Visit(member);
+            }
+        }
+    }
+
+    private class RenamerWalkerBase: CSharpSyntaxWalker {
+        public Renamer Parent;
+        public SemanticModel _sema;
+        public List<Task> _tasks;
+
+        public RenamerWalkerBase(Renamer parent, SemanticModel sema, List<Task> tasks) {
+            Parent = parent;
+            _sema = sema;            
+            _tasks = tasks;
+        }
+
+        protected virtual bool ValidReplacement(ISymbol original, ReferencedSymbol reference) {
+            return true;
+        }
+
+        protected void AttemptRename(SyntaxNode node) {
             var symbol = _sema
                 .GetDeclaredSymbol(node)
                 ?? throw new Exception($"Failed to get symbol for syntax {node.GetText()}");
 
+            AttemptRename(symbol, Parent._gen.Next());
+        }
+
+        protected void AttemptRename(ISymbol symbol, string newName) {
             if(symbol.Kind != SymbolKind.Namespace &&
-                !_references.Contains(symbol) &&
+                !Parent._handled.Contains(symbol) &&
                 !symbol.IsImplicitlyDeclared &&
                 symbol.Locations.Any((loc) => loc.IsInSource) &&
                 !symbol.IsExtern &&
@@ -281,44 +306,51 @@ public class Renamer: CompilationPass {
                 !(symbol is INamedTypeSymbol && (symbol.Name.Equals("Program"))) &&
                 !(symbol is IMethodSymbol && (symbol.Name.Equals("Save") || symbol.Name.Equals("Main")))
             ) {
-                _references.Clear(symbol);
-                var refs = _references.Get(symbol)!;
+                Parent._handled.Add(symbol);
                 _tasks.Add(Task.Run(async () => {
                     var AddReferences = async (IEnumerable<ReferencedSymbol> symbolReferences) => {
                         foreach(var reference in symbolReferences) {
-                            if(!SymbolEqualityComparer.Default.Equals(reference.Definition, symbol)) {
-                                continue;
-                            }
+                            if(!ValidReplacement(symbol, reference)) { continue; }
                             foreach(var loc in reference.Locations) {
                                 if(!loc.Location.IsInSource || loc.IsImplicit) { continue; }
 
                                 var node = (await loc.Location.SourceTree!.GetRootAsync()).FindNode(loc.Location.SourceSpan);
                                 if(node is ConstructorInitializerSyntax) { continue; }
-                                refs.Add((loc.Document.Id, loc.Location.SourceSpan));
-                            } 
+                                lock(Parent._renames) { Parent._renames.Add((loc.Document.Id, loc.Location.SourceSpan, newName)); }
+                            }
+                            
+                            if(!Parent._handled.Contains(reference.Definition)) {
+                                AttemptRename(reference.Definition, newName);
+                            }
                         }
                     };
 
                     var AddLocations = (IEnumerable<Location> locs) => {
                         foreach(var loc in locs) {
                             if(!loc.IsInSource) { continue; }
-                            var doc = _sln.GetDocumentId(loc.SourceTree)!;
-                            refs.Add((doc, loc.SourceSpan));
+                            var doc = Parent.Common.Solution.GetDocumentId(loc.SourceTree)!;
+                            lock(Parent._renames) { Parent._renames.Add((doc, loc.SourceSpan, newName)); }
                         }
                     };
 
                     AddLocations(symbol.Locations);
-                    
+
                     switch(symbol) {
                         case INamedTypeSymbol decl: {
                             foreach(var ctor in decl.Constructors) {
                                 AddLocations(ctor.Locations);
-                                await AddReferences(await SymbolFinder.FindReferencesAsync(ctor, _sln));
+                                await AddReferences(await SymbolFinder.FindReferencesAsync(ctor, Parent.Common.Solution));
+                            }
+
+                            if(decl.TypeKind == TypeKind.Interface) {
+                                foreach(var member in decl.GetMembers()) {
+                                    AttemptRename(member, Parent._gen.Next());
+                                }
                             }
                         } break;
                     };
 
-                    await AddReferences(await SymbolFinder.FindReferencesAsync(symbol, _sln));
+                    await AddReferences(await SymbolFinder.FindReferencesAsync(symbol, Parent.Common.Solution));
                 }));
                 return;
             }

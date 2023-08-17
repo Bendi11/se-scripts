@@ -1,4 +1,4 @@
-using System.Collections;
+using System.Collections.Generic;
 using VRageMath;
 
 /// A plugin for the flight computer that can provide a multitude of services
@@ -15,7 +15,7 @@ public interface IDevice {
 public interface IMovementControllerDevice : IDevice {
     /// Get a process that will constantly update output devices to maintain orientation and velocity,
     /// and **must** disable all controls when the task is cancelled
-    IEnumerator Control();
+    IEnumerator<PS> Control();
     /// The orientation in world frame that the flight controller requests
     Vector3D TargetOrientWorld { get; set; }
     /// The velocity in world frame that the flight controller requests
@@ -41,7 +41,7 @@ public enum SensorTargetMode {
 /// A specialization of an IDevice that provides target acquisition and tracking for the flight controller
 public interface ISensorDevice : IDevice {
     /// Return a process that will sweep the sensor in the described area or track a single target
-    IEnumerable ScanProcess();
+    IEnumerable<PS> ScanProcess();
     /// Set to a value between 0 and 1 to indicate the desired scan radius for sensors that
     /// 'sweep'
     float ScanSize { get; set; }
@@ -49,4 +49,9 @@ public interface ISensorDevice : IDevice {
     Vector3D VSPI { get; set; }
     /// An entity ID to a tracked contact that can be used for STT
     long CSPI { get; set; }
+}
+
+/// A specialization of an IDevice that provides unguided weapons functionality
+public interface IWeaponDevice: IDevice {
+
 }

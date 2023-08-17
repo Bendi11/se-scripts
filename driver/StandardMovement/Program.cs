@@ -1,4 +1,5 @@
-using System.Collections;
+using System;
+using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
@@ -24,25 +25,26 @@ public class StandardMovementController : IMovementControllerDevice {
         _id = id;
     }
 
-    public IEnumerator Control() {
+    public IEnumerator<PS> Control() {
         try {
             _gyro.Enable();
             _thrust.Enabled = true;
+            int count = 0;
             for(;;) {
                 _thrust.Step();
                 _gyro.Step();
-                yield return 0;
+                yield return PS.Execute;
             }
         } finally {
             _thrust.Enabled = false;
             _gyro.Disable();
-
         }
     }
 
     public void Init() {
         _thrust = new Thrust();
         var gyros = new System.Collections.Generic.List<IMyGyro>();
+        ShipCore.I.GTS.GetBlocksOfType(gyros);
         _gyro = new GyroController(gyros);
     }
 

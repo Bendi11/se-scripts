@@ -105,7 +105,7 @@ public class ScriptBuilder: IDisposable {
             }
         }
 
-        foreach(var dep in Common.Project.ProjectReferences) {
+        foreach(var dep in Common.Solution.GetProject(id)!.ProjectReferences) {
             GetDocuments(dep.ProjectId, loadedProjects);
         }
     }

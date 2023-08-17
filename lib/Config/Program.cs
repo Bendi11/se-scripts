@@ -19,3 +19,4 @@ public sealed class ConfigValue {
     public void DefaultUint(MyIni ini, out ulong v, ulong dflt) { v = ini.Get(Section, Name).ToUInt64(dflt); }
     public void DefaultString(MyIni ini, out string v, string dflt) { v = ini.Get(Section, Name).ToString(dflt); }
 }
+
