@@ -4,12 +4,11 @@ using Sandbox.ModAPI.Ingame;
 namespace IngameScript {
     partial class Program: MyGridProgram {
         public Program() {
-            var cockpit = GridTerminalSystem.GetBlockWithName("COCKPIT") as IMyShipController;
             ShipCore.Create(
                 GridTerminalSystem,
                 Me,
                 Runtime,
-                new StandardMovementController("movement")
+                new SensorBlockDevice()
             );
             Runtime.UpdateFrequency |= UpdateFrequency.Update10;
         }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
 /// A plugin for the flight computer that can provide a multitude of services
@@ -9,21 +10,6 @@ public interface IDevice {
     string Name();
     /// Get a unique ID for this plugin
     string ID();
-}
-
-/// A specialization of an IDevice that provides ship movement and orientation control to the flight controller
-public interface IMovementControllerDevice : IDevice {
-    /// Get a process that will constantly update output devices to maintain orientation and velocity,
-    /// and **must** disable all controls when the task is cancelled
-    IEnumerator<PS> Control();
-    /// The orientation in world frame that the flight controller requests
-    Vector3D TargetOrientWorld { get; set; }
-    /// The velocity in world frame that the flight controller requests
-    Vector3D TargetVelocityWorld { get; set; }
-    /// Set by the movement controller to indicate that its targeted orientation is
-    /// different from the ordered orientation, for movement controllers that must
-    /// orient themselves to achieve the ordered velocity (eg. Single thruster craft)
-    Vector3D ActualOrientWorld { get; }
 }
 
 /// Targeting modes for an <c>ISensorPlugin</c>
@@ -41,10 +27,12 @@ public enum SensorTargetMode {
 /// A specialization of an IDevice that provides target acquisition and tracking for the flight controller
 public interface ISensorDevice : IDevice {
     /// Return a process that will sweep the sensor in the described area or track a single target
-    IEnumerable<PS> ScanProcess();
+    IEnumerator<PS> ScanProcess();
     /// Set to a value between 0 and 1 to indicate the desired scan radius for sensors that
     /// 'sweep'
     float ScanSize { get; set; }
+    /// Current targeting mode
+    SensorTargetMode Mode { get; set; }
     /// A vector that can indicate the position of an SPI or the direction of an SPI
     Vector3D VSPI { get; set; }
     /// An entity ID to a tracked contact that can be used for STT
@@ -54,4 +42,35 @@ public interface ISensorDevice : IDevice {
 /// A specialization of an IDevice that provides unguided weapons functionality
 public interface IWeaponDevice: IDevice {
 
+}
+
+public struct SensorBlockDevice: ISensorDevice {
+    List<IMySensorBlock> _sensors;
+
+    public IEnumerator<PS> ScanProcess() {
+        var detected = new List<MyDetectedEntityInfo>();
+        for(;;) {
+            foreach(var sensor in _sensors) {
+                detected.Clear();
+                sensor.DetectedEntities(detected);
+                foreach(var ent in detected) {
+                    ShipCore.I.UpdateContact(ent);
+                }
+                yield return PS.Execute;
+            }
+        }
+    }
+
+    public float ScanSize { get; set; }
+    public Vector3D VSPI { get; set; }
+    public long CSPI { get; set; }
+    public SensorTargetMode Mode { get; set; }
+
+    public string ID() => "SENSORS";
+    public string Name() => "Sensor Blocks";
+
+    public void Init() {
+        _sensors = new List<IMySensorBlock>();
+        ShipCore.I.GTS.GetBlocksOfType(_sensors);
+    }
 }

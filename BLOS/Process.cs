@@ -14,6 +14,7 @@ partial class ShipCore {
     /// </summary>
     public void RunMain() {
         int start = _progress;
+        Time += Runtime.TimeSinceLastRun.TotalSeconds;
         while(Runtime.CurrentInstructionCount < _insLimit) {
             var proc = _ps[_progress];
             if(!proc.MoveNext()) {

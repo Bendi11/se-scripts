@@ -8,8 +8,8 @@
   </ImportGroup>
   <!-- Credit: https://github.com/malware-dev/MDK-SE/tree/master/Source/IngameScriptTemplate-->
   <ItemGroup>
-    <ProjectReference Include="$(SolutionDir)/lib/Log/Log.csproj" />
-    <ProjectReference Include="$(SolutionDir)/lib/Config/Config.csproj" />
+    <ProjectReference Include="../lib/Log/Log.csproj" />
+    <ProjectReference Include="../lib/Config/Config.csproj" />
     <Reference Include="System.Collections.Immutable">
       <HintPath>$(MDKGameBinPath)\System.Collections.Immutable.dll</HintPath>
       <Private>false</Private>

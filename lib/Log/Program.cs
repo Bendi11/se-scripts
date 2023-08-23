@@ -110,4 +110,3 @@ public class LcdWriter {
         } while(Wrap && (msg.Length >= 0));
     }
 }
-
