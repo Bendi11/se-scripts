@@ -1,5 +1,7 @@
 
 using System;
+using System.Collections.Generic;
+using VRage;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
@@ -36,8 +38,11 @@ struct Card: IDrawable {
         ICON_SZ = 0.15f;
     
     static Vector2  CARD_SZ = new Vector2(CARD_WIDTH, CARD_HEIGHT),
-        CORNER_ICON_POS = -(CARD_SZ / 2f) + new Vector2(CORNER_ICON_SZ * 1.2f, CORNER_ICON_SZ * 2.1f),
+        CARD_CORNER = -(CARD_SZ / 2f),
+        CORNER_ICON_PAD = new Vector2(0.05f, CORNER_ICON_SZ * 1.8f),
         CENTER_ICON_POS = new Vector2(0f, -(CARD_HEIGHT / 3f));
+
+    static Color CARD_COLOR = new Color(201, 201, 185);
     static IDrawable[] ICONS = new IDrawable[] {
         new Heart(),
         new Diamond(),
@@ -57,33 +62,11 @@ struct Card: IDrawable {
             Data = "SquareSimple",
             Position = new Vector2(0f, 0f),
             Size = new Vector2(CARD_WIDTH, CARD_HEIGHT),
-            Color = Color.White,
+            Color = CARD_COLOR,
         });
 
         var icon = ICONS[(int)Kind];
 
-        r.Push()
-            .Translated(CORNER_ICON_POS)
-            .Scaled(CORNER_ICON_SZ)
-            .Draw(icon);
-
-        r.Push()
-            .Translated(-CORNER_ICON_POS)
-            .Scaled(CORNER_ICON_SZ)
-            .Rotated((float)Math.PI)
-            .Draw(icon);
-
-        r.Push()
-            .Translated(CENTER_ICON_POS)
-            .Scaled(ICON_SZ)
-            .Draw(icon);
-
-        r.Push()
-            .Translated(-CENTER_ICON_POS)
-            .Scaled(ICON_SZ)
-            .Rotated((float)Math.PI)
-            .Draw(icon);
-        
         string numeral;
 
         switch(Number) {
@@ -91,21 +74,48 @@ struct Card: IDrawable {
             case CardNumeral.Queen: numeral = "Q"; break;
             case CardNumeral.King: numeral = "K"; break;
             case CardNumeral.Ace: numeral = "A"; break;
-            default: numeral = ((int)Number).ToString(); break;
+            default: {
+                numeral = ((int)Number).ToString();
+
+                var center_positions = new List<MyTuple<Vector2, bool>>();
+                
+                switch(Number) {
+                    case CardNumeral.One: {
+
+
+                    }
+                }
+            break;
         }
 
+        //Corner text + symbol
+
         Text txt = new Text(numeral);
-
-        var txt_translate = new Vector2(-CORNER_ICON_SZ / 2f, CORNER_ICON_SZ * 2.1f);
+        
+        var txt_sz = txt.Size(r);
+        var txt_translate = CARD_CORNER + new Vector2(CORNER_ICON_PAD.X, 0f) + (txt_sz / 2f);
+        var vert_pad = new Vector2(0f, txt_sz.Y / 2f);
 
         r.Push()
-            .Translated(CARD_SZ - (CORNER_ICON_POS + txt_translate))
+            .Translated(txt_translate - vert_pad)
             .Draw(txt);
 
         r.Push()
-            .Translated(CORNER_ICON_POS - txt_translate)
+            .Translated(-txt_translate - vert_pad)
             .Draw(txt);
+        
+        var corner_icon_translate = txt_translate + new Vector2(0f, CORNER_ICON_PAD.Y);
 
+        r.Push()
+            .Translated(corner_icon_translate)
+            .Scaled(CORNER_ICON_SZ)
+            .Draw(icon);
+
+        r.Push()
+            .Translated(-corner_icon_translate)
+            .Scaled(CORNER_ICON_SZ)
+            .Rotated((float)Math.PI)
+            .Draw(icon);
     }
 }
 

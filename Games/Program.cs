@@ -19,23 +19,26 @@ using VRageMath;
 using System.Collections.Immutable;
 
 struct Text: IDrawable {
-    string _text;
+    StringBuilder _text;
 
-    public Text(string text) { _text = text; }
+    const string FONT = "White";
 
+    public Text(string text) { _text = new StringBuilder(text); }
+    
+    /// Get the size in scaled units of the text when rendered
     public Vector2 Size(Renderer r) {
-
+        return r._root.MeasureStringInPixels(_text, FONT, r.ScaleFactor.Length() / 160) / r.ScaleFactor;
     }
 
     public void Draw(Renderer r) {
         r.Draw(new MySprite() {
             Type = SpriteType.TEXT,
             Alignment = TextAlignment.CENTER,
-            Data = _text,
+            Data = _text.ToString(),
             Position = Vector2.Zero,
-            RotationOrScale = 0.1f,
+            RotationOrScale = r.ScaleFactor.Length() / 160,
             Color = Color.Red,
-            FontId = "White",
+            FontId = FONT,
         });
     }
 }

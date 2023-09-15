@@ -6,28 +6,27 @@ using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
 public struct Renderer {
+    public IMyTextSurface _root;
     public MySpriteDrawFrame _frame;
-    Vector2 _offset; 
-    Vector2 _scale;
-    float _rot;
+    public Vector2 Translation; 
+    public Vector2 ScaleFactor;
+    public float Rotation;
 
     public void Draw(MySprite sprite) {
         sprite.Alignment = TextAlignment.CENTER;
 
         if(sprite.Size != null) {
-            sprite.Size *= _scale;
+            sprite.Size *= ScaleFactor;
         }
 
         if(sprite.Type != SpriteType.TEXT) {
-            sprite.RotationOrScale += _rot;
-        } else {
-            sprite.RotationOrScale *= _scale.Length() / 16;
+            sprite.RotationOrScale += Rotation;
         }
         
         var pos = sprite.Position.Value;
-        pos *= _scale * new Vector2(1f, -1f);
-        pos.Rotate(_rot);
-        sprite.Position = pos + _offset;
+        pos *= ScaleFactor * new Vector2(1f, -1f);
+        pos.Rotate(Rotation);
+        sprite.Position = pos + Translation;
         
         
         _frame.Add(sprite);
@@ -36,13 +35,13 @@ public struct Renderer {
     public void Draw(IDrawable drawable) => drawable.Draw(this);
 
     public void Translate(Vector2 pos) {
-        pos *= _scale;
-        pos.Rotate(_rot);
-        _offset += pos;
+        pos *= ScaleFactor;
+        pos.Rotate(Rotation);
+        Translation += pos;
     }
-    public void Scale(Vector2 scale) => _scale *= scale;
-    public void Scale(float scale) => _scale *= scale;
-    public void Rotate(float r) => _rot += r;
+    public void Scale(Vector2 scale) => ScaleFactor *= scale;
+    public void Scale(float scale) => ScaleFactor *= scale;
+    public void Rotate(float r) => Rotation += r;
 
     public Renderer Translated(Vector2 pos) {
         var me = Push();
@@ -68,16 +67,17 @@ public struct Renderer {
 
     public Renderer Push() => new Renderer() {
         _frame = _frame,
-        _offset = _offset,
-        _scale = _scale,
-        _rot = _rot
+        Translation = Translation,
+        ScaleFactor = ScaleFactor,
+        Rotation = Rotation
     };
 
     public Renderer(IMyTextSurface root) {
+        _root = root;
         _frame = root.DrawFrame();
-        _offset = (root.TextureSize - root.SurfaceSize) / 2f;
-        _scale = root.SurfaceSize / 2f;
-        _rot = 0;
+        Translation = (root.TextureSize - root.SurfaceSize) / 2f;
+        ScaleFactor = root.SurfaceSize / 2f;
+        Rotation = 0;
         Translate(new Vector2(1f, 1f));
     }
 
