@@ -8,6 +8,7 @@ public static class Process {
     static List<IEnumerator> _procs = new List<IEnumerator>();
 
     public static void RunMain(double timeStep) {
+        Time += timeStep;
         for(int i = 0; i < _procs.Count; ++i) {
             bool more = _procs[i].MoveNext();
             if(!more) { _procs[i] = null; }
