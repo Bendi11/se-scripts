@@ -38,7 +38,7 @@ struct Card: IDrawable {
         ICON_SZ = 0.15f;
     
     static Vector2  CARD_SZ = new Vector2(CARD_WIDTH, CARD_HEIGHT),
-        CARD_CORNER = -(CARD_SZ / 2f),
+        CARD_CORNER = -CARD_SZ / 2f,
         CORNER_ICON_PAD = new Vector2(0.05f, CORNER_ICON_SZ * 1.8f),
         CENTER_ICON_POS = new Vector2(0f, -(CARD_HEIGHT / 3f));
 
@@ -77,15 +77,60 @@ struct Card: IDrawable {
             default: {
                 numeral = ((int)Number).ToString();
 
-                var center_positions = new List<MyTuple<Vector2, bool>>();
-                
+                IEnumerable<MyTuple<Vector2, bool>> center_positions = null;
+               
+                float ICON_STEP_Y = CARD_HEIGHT / 3f + CARD_HEIGHT / 16f;
+
                 switch(Number) {
                     case CardNumeral.One: {
+                        center_positions = new[] { MyTuple.Create(Vector2.Zero, false) };
+                    } break;
+                    case CardNumeral.Two: {
+                        var off = new Vector2(0f, ICON_STEP_Y);
+                        center_positions = new[] {
+                            MyTuple.Create(off, true),
+                            MyTuple.Create(-off, false),
+                        };
+                    } break;
+                    case CardNumeral.Three:
+                        var offset = new Vector2(0f, ICON_STEP_Y);
+                        center_positions = new[] {
+                            MyTuple.Create(offset, true),
+                            MyTuple.Create(Vector2.Zero, false),
+                            MyTuple.Create(-offset, false),
+                        };
+                    break;
+                    default: {
+                        var x = CARD_WIDTH / 4f - CARD_WIDTH / 16f;
+                        var poslist = new List<MyTuple<Vector2, bool>>() {
+                            MyTuple.Create(new Vector2(x, ICON_STEP_Y), true),
+                            MyTuple.Create(new Vector2(-x, ICON_STEP_Y), true),
+                            MyTuple.Create(new Vector2(x, -ICON_STEP_Y), false),
+                            MyTuple.Create(new Vector2(-x, -ICON_STEP_Y), false),
+                        };
 
+                        switch(Number) {
+                            case CardNumeral.Five:
+                                poslist.Add(MyTuple.Create(Vector2.Zero, false));
+                            break;
 
-                    }
+                            case CardNumeral.Six:
+                                
+                        }
+                    } break;
                 }
-            break;
+                
+                foreach(var icon_pos in center_positions) {
+                    var drawing = r.Translated(icon_pos.Item1);
+                    if(icon_pos.Item2) {
+                        drawing.Rotate((float)Math.PI);
+                    }
+                    
+                    drawing.Scale(ICON_SZ);
+
+                    drawing.Draw(icon);
+                }
+            } break;
         }
 
         //Corner text + symbol
@@ -139,7 +184,7 @@ struct Heart: IDrawable {
     static MySprite BOTTOM = new MySprite() {
         Type = SpriteType.TEXTURE,
         Data = "Triangle",
-        Position = new Vector2(0f, -0.6f),
+        Position = new Vector2(0f, 0.6f),
         RotationOrScale = (float)Math.PI,
         Color = Color.Red,
         Size = new Vector2(2f, 1.2f),
@@ -148,7 +193,7 @@ struct Heart: IDrawable {
     static MySprite TOPLEFT = new MySprite() {
         Type = SpriteType.TEXTURE,
         Data = "RightTriangle",
-        Position = new Vector2(-0.5f, 0.4f),
+        Position = new Vector2(-0.5f, -0.4f),
         Color = Color.Red,
         Size = new Vector2(1f, 0.8f),
     };
@@ -156,7 +201,7 @@ struct Heart: IDrawable {
     static MySprite TOPRIGHT = new MySprite() {
         Type = SpriteType.TEXTURE,
         Data = "RightTriangle",
-        Position = new Vector2(0.5f, 0.4f),
+        Position = new Vector2(0.5f, -0.4f),
         Color = Color.Red,
         RotationOrScale = -(float)Math.PI / 2f,
         Size = new Vector2(0.8f, 1f),

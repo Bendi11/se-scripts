@@ -49,7 +49,7 @@ namespace IngameScript {
 
         public Program() {
             var disp = GridTerminalSystem.GetBlockWithName("DISPLAY") as IMyTextSurfaceProvider;
-            display = new Display(disp.GetSurface(0), new Card(CardKind.Heart, CardNumeral.Two));
+            display = new Display(disp.GetSurface(0), new Card(CardKind.Heart, CardNumeral.Four));
             Log.Init(Me.GetSurface(0));
             display.Update();
             Runtime.UpdateFrequency |= UpdateFrequency.Update10;

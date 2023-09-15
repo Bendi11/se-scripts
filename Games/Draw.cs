@@ -24,10 +24,9 @@ public struct Renderer {
         }
         
         var pos = sprite.Position.Value;
-        pos *= ScaleFactor * new Vector2(1f, -1f);
+        pos *= ScaleFactor;
         pos.Rotate(Rotation);
         sprite.Position = pos + Translation;
-        
         
         _frame.Add(sprite);
     }
