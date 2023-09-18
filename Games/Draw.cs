@@ -75,9 +75,11 @@ public struct Renderer {
         _root = root;
         _frame = root.DrawFrame();
         Translation = (root.TextureSize - root.SurfaceSize) / 2f;
+        var scale = Math.Min(root.SurfaceSize.X, root.SurfaceSize.Y);
         ScaleFactor = root.SurfaceSize / 2f;
         Rotation = 0;
         Translate(new Vector2(1f, 1f));
+        ScaleFactor = new Vector2(scale, scale) / 2f;
     }
 
     public void Dispose() => _frame.Dispose();

@@ -109,13 +109,52 @@ struct Card: IDrawable {
                             MyTuple.Create(new Vector2(-x, -ICON_STEP_Y), false),
                         };
 
+                        center_positions = poslist;
+
                         switch(Number) {
                             case CardNumeral.Five:
                                 poslist.Add(MyTuple.Create(Vector2.Zero, false));
                             break;
 
                             case CardNumeral.Six:
-                                
+                            case CardNumeral.Seven:
+                            case CardNumeral.Eight:
+                                poslist.AddArray(new[] {
+                                    MyTuple.Create(new Vector2(x, 0), false),
+                                    MyTuple.Create(new Vector2(-x, 0), false)
+                                });
+
+                                if(Number == CardNumeral.Seven) {
+                                    poslist.Add(
+                                        MyTuple.Create(new Vector2(0, -ICON_STEP_Y * 3f / 4f), false)
+                                    );
+                                }
+                            break;
+
+                            case CardNumeral.Nine:
+                            case CardNumeral.Ten:
+                                var yOffset = ICON_STEP_Y / 3f;
+
+                                poslist.AddArray(new[] {
+                                    MyTuple.Create(new Vector2(x, yOffset), true),
+                                    MyTuple.Create(new Vector2(-x, yOffset), true),
+                                    MyTuple.Create(new Vector2(x, -yOffset), false),
+                                    MyTuple.Create(new Vector2(-x, -yOffset), false),
+                                });
+
+                                if(Number == CardNumeral.Nine) {
+                                    poslist.Add(
+                                        MyTuple.Create(new Vector2(0, -ICON_STEP_Y * 3f / 4f), false)
+                                    );
+                                }
+                            break;
+                        }
+
+                        if(Number == CardNumeral.Eight || Number == CardNumeral.Ten) {
+                            poslist.AddArray(new [] {
+                                MyTuple.Create(new Vector2(0, -ICON_STEP_Y * 3f / 4f), false),
+                                MyTuple.Create(new Vector2(0, ICON_STEP_Y * 3f / 4f), true)
+                            });
                         }
                     } break;
                 }
@@ -192,19 +231,18 @@ struct Heart: IDrawable {
 
     static MySprite TOPLEFT = new MySprite() {
         Type = SpriteType.TEXTURE,
-        Data = "RightTriangle",
-        Position = new Vector2(-0.5f, -0.4f),
+        Data = "SemiCircle",
+        Position = new Vector2(-0.49f, 0.01f),
         Color = Color.Red,
         Size = new Vector2(1f, 0.8f),
     };
 
     static MySprite TOPRIGHT = new MySprite() {
         Type = SpriteType.TEXTURE,
-        Data = "RightTriangle",
-        Position = new Vector2(0.5f, -0.4f),
+        Data = "SemiCircle",
+        Position = new Vector2(0.49f, 0.01f),
         Color = Color.Red,
-        RotationOrScale = -(float)Math.PI / 2f,
-        Size = new Vector2(0.8f, 1f),
+        Size = new Vector2(1f, 0.8f),
     };
 
 
