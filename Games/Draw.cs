@@ -33,13 +33,15 @@ public struct Renderer {
 
     public void Draw(IDrawable drawable) => drawable.Draw(this);
 
+    public void Translate(float x, float y) => Translate(new Vector2(x, y));
     public void Translate(Vector2 pos) {
         pos *= ScaleFactor;
         pos.Rotate(Rotation);
         Translation += pos;
     }
+
+    public void Scale(float scale) => Scale(new Vector2(scale, scale));
     public void Scale(Vector2 scale) => ScaleFactor *= scale;
-    public void Scale(float scale) => ScaleFactor *= scale;
     public void Rotate(float r) => Rotation += r;
 
     public Renderer Translated(Vector2 pos) {
@@ -47,16 +49,14 @@ public struct Renderer {
         me.Translate(pos);
         return me;
     }
+
+    public Renderer Translated(float x, float y) => Translated(new Vector2(x, y));
     public Renderer Scaled(Vector2 scale) {
         var me = Push();
         me.Scale(scale);
         return me;
     }
-    public Renderer Scaled(float scale) {
-        var me = Push();
-        me.Scale(scale);
-        return me;
-    }
+    public Renderer Scaled(float scale) => Scaled(new Vector2(scale, scale));
     public Renderer Rotated(float r) {
         var me = Push();
         me.Rotate(r);

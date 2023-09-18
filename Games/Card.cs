@@ -46,6 +46,7 @@ struct Card: IDrawable {
     static IDrawable[] ICONS = new IDrawable[] {
         new Heart(),
         new Diamond(),
+        new Clover(),
     };
 
     public CardKind Kind;
@@ -57,6 +58,7 @@ struct Card: IDrawable {
     }
 
     public void Draw(Renderer r) {
+        r.Scale(1f);
         r.Draw(new MySprite() {
             Type = SpriteType.TEXTURE,
             Data = "SquareSimple",
@@ -232,7 +234,7 @@ struct Heart: IDrawable {
     static MySprite TOPLEFT = new MySprite() {
         Type = SpriteType.TEXTURE,
         Data = "SemiCircle",
-        Position = new Vector2(-0.49f, 0.01f),
+        Position = new Vector2(-0.48f, 0.05f),
         Color = Color.Red,
         Size = new Vector2(1f, 0.8f),
     };
@@ -240,7 +242,7 @@ struct Heart: IDrawable {
     static MySprite TOPRIGHT = new MySprite() {
         Type = SpriteType.TEXTURE,
         Data = "SemiCircle",
-        Position = new Vector2(0.49f, 0.01f),
+        Position = new Vector2(0.48f, 0.05f),
         Color = Color.Red,
         Size = new Vector2(1f, 0.8f),
     };
@@ -250,5 +252,32 @@ struct Heart: IDrawable {
         r.Draw(BOTTOM); 
         r.Draw(TOPLEFT);
         r.Draw(TOPRIGHT);
+    }
+}
+
+struct Clover: IDrawable {
+    static MySprite TOPLEAF = new MySprite() {
+        Type = SpriteType.TEXTURE,
+        Data = "Circle",
+        Position = new Vector2(0f, -0.45f),
+        Size = new Vector2(0.9f, 0.9f),
+        Color = Color.Red,
+    };
+
+    static MySprite TRUNK = new MySprite() {
+        Type = SpriteType.TEXTURE,
+        Data = "SquareSimple",
+        Position = new Vector2(0f, 0.35f),
+        Size = new Vector2(0.4f, 1f),
+        Color = Color.Red,
+    };
+
+    public void Draw(Renderer r) {
+        r.Draw(TRUNK);
+        r
+            .Translated(0f, -0.45f)
+            .Draw(TOPLEAF);
+        r.Translated(-0.45f, 0f).Draw(TOPLEAF);
+        r.Translated(0.45f, 0f).Draw(TOPLEAF);
     }
 }
