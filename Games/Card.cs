@@ -39,7 +39,7 @@ struct Card: IDrawable {
     
     static Vector2  CARD_SZ = new Vector2(CARD_WIDTH, CARD_HEIGHT),
         CARD_CORNER = -CARD_SZ / 2f,
-        CORNER_ICON_PAD = new Vector2(0.05f, CORNER_ICON_SZ * 1.8f),
+        CORNER_ICON_PAD = new Vector2(0.05f, CORNER_ICON_SZ * 1.5f),
         CENTER_ICON_POS = new Vector2(0f, -(CARD_HEIGHT / 3f));
 
     static Color CARD_COLOR = new Color(201, 201, 185);
@@ -47,18 +47,26 @@ struct Card: IDrawable {
         new Heart(),
         new Diamond(),
         new Clover(),
+        new Spade(),
     };
 
     public CardKind Kind;
     public CardNumeral Number;
+    public bool Red;
 
-    public Card(CardKind kind, CardNumeral num) {
+    public Color Color {
+        get {
+            return Red ? Color.Red : Color.Black;
+        }
+    }
+
+    public Card(CardKind kind, CardNumeral num, bool red) {
         Kind = kind;
         Number = num;
+        Red = red;
     }
 
     public void Draw(Renderer r) {
-        r.Scale(1f);
         r.Draw(new MySprite() {
             Type = SpriteType.TEXTURE,
             Data = "SquareSimple",
@@ -168,7 +176,7 @@ struct Card: IDrawable {
                     }
                     
                     drawing.Scale(ICON_SZ);
-
+                    drawing.SetColor(Color);
                     drawing.Draw(icon);
                 }
             } break;
@@ -176,11 +184,13 @@ struct Card: IDrawable {
 
         //Corner text + symbol
 
-        Text txt = new Text(numeral);
+        Text txt = new Text(numeral, 1.5f);
         
-        var txt_sz = txt.Size(r);
+        var txt_sz = txt.GetRenderedSize(r);
         var txt_translate = CARD_CORNER + new Vector2(CORNER_ICON_PAD.X, 0f) + (txt_sz / 2f);
         var vert_pad = new Vector2(0f, txt_sz.Y / 2f);
+
+        r.SetColor(Color);
 
         r.Push()
             .Translated(txt_translate - vert_pad)
@@ -190,7 +200,7 @@ struct Card: IDrawable {
             .Translated(-txt_translate - vert_pad)
             .Draw(txt);
         
-        var corner_icon_translate = txt_translate + new Vector2(0f, CORNER_ICON_PAD.Y);
+        var corner_icon_translate = txt_translate + new Vector2(0f, txt_sz.Y / 2f + CORNER_ICON_PAD.Y);
 
         r.Push()
             .Translated(corner_icon_translate)
@@ -259,25 +269,41 @@ struct Clover: IDrawable {
     static MySprite TOPLEAF = new MySprite() {
         Type = SpriteType.TEXTURE,
         Data = "Circle",
-        Position = new Vector2(0f, -0.45f),
-        Size = new Vector2(0.9f, 0.9f),
+        Position = new Vector2(0f, 0f),
+        Size = new Vector2(0.8f, 0.8f),
         Color = Color.Red,
     };
 
     static MySprite TRUNK = new MySprite() {
         Type = SpriteType.TEXTURE,
         Data = "SquareSimple",
-        Position = new Vector2(0f, 0.35f),
+        Position = new Vector2(0f, 0.15f),
         Size = new Vector2(0.4f, 1f),
         Color = Color.Red,
     };
 
     public void Draw(Renderer r) {
+        r.Scale(1.17647058824f);
         r.Draw(TRUNK);
         r
             .Translated(0f, -0.45f)
             .Draw(TOPLEAF);
         r.Translated(-0.45f, 0f).Draw(TOPLEAF);
         r.Translated(0.45f, 0f).Draw(TOPLEAF);
+    }
+}
+
+struct Spade: IDrawable {
+    static MySprite BOTTOM = new MySprite() {
+        Type = SpriteType.TEXTURE,
+        Data = "SquareSimple",
+        Position = new Vector2(0f, 0.5f),
+        Size = new Vector2(0.2f, 0.8f),
+        Color = Color.Red,
+    };
+
+    public void Draw(Renderer r) {
+        r.Translated(0f, 0.1f).Rotated((float)Math.PI).Draw(new Heart());
+        r.Draw(BOTTOM);
     }
 }

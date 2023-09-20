@@ -1,11 +1,10 @@
 using System.Collections.Generic;
 using System.Collections;
 
-public struct Nil { public readonly static Nil _; }
 
 public static class Process {
     public static double Time = 0;
-    static List<IEnumerator> _procs = new List<IEnumerator>();
+    static List<IEnumerator<int>> _procs = new List<IEnumerator<int>>();
 
     public static void RunMain(double timeStep) {
         Time += timeStep;
@@ -15,11 +14,11 @@ public static class Process {
         }
     }
 
-    public static void Spawn(IEnumerable process) {
+    public static void Spawn(IEnumerable<int> process) {
         _procs.Add(process.GetEnumerator());
     }
 
-    public static void Spawn(IEnumerator process) {
+    public static void Spawn(IEnumerator<int> process) {
         _procs.Add(process);
     }
 

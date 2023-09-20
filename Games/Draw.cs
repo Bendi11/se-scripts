@@ -1,6 +1,5 @@
 
 using System;
-using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
@@ -11,9 +10,19 @@ public struct Renderer {
     public Vector2 Translation; 
     public Vector2 ScaleFactor;
     public float Rotation;
+    public Color? Color;
+
+    public Vector2 Size {
+        get {
+            return _root.SurfaceSize / ScaleFactor;
+        }
+    }
 
     public void Draw(MySprite sprite) {
         sprite.Alignment = TextAlignment.CENTER;
+        if(Color.HasValue) {
+            sprite.Color = Color.Value;
+        }
 
         if(sprite.Size != null) {
             sprite.Size *= ScaleFactor;
@@ -32,7 +41,8 @@ public struct Renderer {
     }
 
     public void Draw(IDrawable drawable) => drawable.Draw(this);
-
+    
+    public void SetColor(Color c) => Color = c;
     public void Translate(float x, float y) => Translate(new Vector2(x, y));
     public void Translate(Vector2 pos) {
         pos *= ScaleFactor;
@@ -43,6 +53,12 @@ public struct Renderer {
     public void Scale(float scale) => Scale(new Vector2(scale, scale));
     public void Scale(Vector2 scale) => ScaleFactor *= scale;
     public void Rotate(float r) => Rotation += r;
+
+    public Renderer Colored(Color c) {
+        var me = Push();
+        me.SetColor(c);
+        return me;
+    }
 
     public Renderer Translated(Vector2 pos) {
         var me = Push();
@@ -68,7 +84,8 @@ public struct Renderer {
         _frame = _frame,
         Translation = Translation,
         ScaleFactor = ScaleFactor,
-        Rotation = Rotation
+        Rotation = Rotation,
+        Color = Color,
     };
 
     public Renderer(IMyTextSurface root) {
@@ -78,6 +95,7 @@ public struct Renderer {
         var scale = Math.Min(root.SurfaceSize.X, root.SurfaceSize.Y);
         ScaleFactor = root.SurfaceSize / 2f;
         Rotation = 0;
+        Color = null;
         Translate(new Vector2(1f, 1f));
         ScaleFactor = new Vector2(scale, scale) / 2f;
     }
