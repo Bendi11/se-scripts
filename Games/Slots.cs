@@ -1,5 +1,7 @@
 
 using System;
+using System.Collections.Generic;
+using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
@@ -61,18 +63,42 @@ public struct Slots: IDrawable {
     /// Shared slot icon state, read from block custom data
     public SlotGameConfig Config;
     /// Storage for the generated slot icons, used to render onscreen 
-    public int[] SelectedIcons;
+    SelectedIcon[] _selectedIcons;
+    IMyTextSurface _surface;
+
+    struct SelectedIcon {
+        public int Index;
+        public bool Final;
+    }
     
     /// Create a new slots instance from the map it will use to render icons to the user
-    public Slots(SlotGameConfig cfg) {
+    public Slots(SlotGameConfig cfg, IMyTextSurfaceProvider seat) {
         Config = cfg;
-        SelectedIcons = new int[cfg.ReelsCount];
+        _selectedIcons = new SelectedIcon[cfg.ReelsCount];
+        _surface = seat.GetSurface(0);
     }
-
-    public void Roll() {
-        for(int i = 0; i < SelectedIcons.Length; ++i) {
-            SelectedIcons[i] = Config.RandomIcon();
+    
+    /// Render a roll animation and select random icons for each reel
+    public IEnumerator<Yield> Roll() {
+        for(int i = 0; i < _selectedIcons.Length; ++i) {
+            for(int k = 0; k < 20; ++k) {
+                for(int j = i; j < _selectedIcons.Length; ++j) {
+                    _selectedIcons[j] = new SelectedIcon() {
+                        Index = Config.RandomIcon(),
+                        Final = false,
+                    };
+                }
+                
+                var render = new Renderer(_surface);
+                render.Draw(this);
+                render.Dispose();
+                yield return Tasks.WaitMs(50);
+            }
+            _selectedIcons[i].Final = true;
         }
+        var render1 = new Renderer(_surface);
+        render1.Draw(this);
+        render1.Dispose();
     }
     
     /// Generate a random icon for the 
@@ -83,11 +109,13 @@ public struct Slots: IDrawable {
         float iconSize = xStep / 4f;
         float x = xStep / 2f;
         int reel = 0;
-        foreach(int selected in SelectedIcons) {
+        foreach(var selected in _selectedIcons) {
             var icon = r.Push();
             icon.Translate(x, 0f);
             icon.Scale(iconSize);
-            icon.Draw(Config.Slots[selected]);
+            var color = Config.Slots[selected.Index].Color;
+            icon.SetColor(selected.Final ? color : color * 0.5f);
+            icon.Draw(Config.Slots[selected.Index]);
             reel += 1;
             x += xStep;
         } 

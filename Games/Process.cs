@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using Sandbox.ModAPI.Ingame;
 
 /// Enumeration that must be returned from all Tasks, signalling different
 /// operations to the controlling ProcessManager 
@@ -28,19 +30,19 @@ public class Task {
 /// A global process manager that effectively virtualizes the programmable block, allowing multiple
 /// tasks to be run concurrently, perform non-blocking operations by sleeping and waking tasks, and run
 /// complex operations over multiple game ticks automatically
-public static class ProcessManager {
+public static class Tasks {
     /// A global time tracker updated every tick, tracks time since the PB was first run
-    public static double Time = 0;
+    public static long Time = 0;
+    
+    /// Runtime info
+    public static IMyGridProgramRuntimeInfo Runtime;
     
     /// Active tasks
     static HashSet<Task> _procs = new HashSet<Task>();
-    /// Process ID generator
-    static int _pid = 1;
-    
-    /// A process ID signifying that the given ID is invalid
-    public const int INVALID_PID = 0;
-    
-    /// ID of the currently executing task
+    /// Timers set to wake tasks at a given timestamp 
+    static SortedList<double, Task> _timers = new SortedList<double, Task>();
+
+    /// Handle of the currently executing task
     static private Task _currentTask = null;
 
     /// Get the currently executing task
@@ -56,32 +58,51 @@ public static class ProcessManager {
         return Yield.Await;
     }
     
-    /// Run the main method
-    public static void RunMain(double timeStep) {
-        Time += timeStep;
+    /// Initialize all shared state required to execute tasks
+    public static void Init(IMyGridProgramRuntimeInfo runtime) {
+        Runtime = runtime;
+    }
+    
+    /// Run the main method with the given time step from a Runtime
+    public static void RunMain() {
+        Time += (long)Runtime.TimeSinceLastRun.TotalMilliseconds;
         _procs.RemoveWhere(t => t.Status != Yield.Continue);
+        var first = _timers.FirstOrDefault();
+        if(first.Value != null) {
+            Runtime.UpdateFrequency |= UpdateFrequency.Once;
+            if(first.Key <= Time) {
+                _timers.Remove(first.Key);
+                Wake(first.Value);
+            }
+        }
+
         foreach(var task in _procs) {
             _currentTask = task;
             bool more = task.Process.MoveNext();
             _currentTask = null;
-            if(!more) Kill(task);
             task.Status = task.Process.Current;
+            if(!more) Kill(task);
+            else Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }
     }
-    
+
     /// Put the given task to sleep
-    public static void Sleep(Task task) {
-        task.Status = Yield.Await;
-        _procs.Remove(task);
-    }
+    public static void Sleep(Task task) => task.Status = Yield.Await;
     
     /// Kill the given task
     public static void Kill(Task task) {
+        task.Status = Yield.Kill;
         task.Process.Dispose();
         task.Process = null;
         if(task.Waiter != null && task.Scratch != null) {
             Notify(task.Waiter, task.Scratch);
         }
+    }
+    
+    /// Sleep the current task until the given timespan has passed
+    public static Yield WaitMs(long ms) {
+        _timers.Add(Time + ms, Current);
+        return Yield.Await;
     }
 
     /// Exit the process without a return value

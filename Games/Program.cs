@@ -48,30 +48,9 @@ struct Text: IDrawable {
 }
 
 class Root: IDrawable {
-    SlotGameConfig cfg = new SlotGameConfig(
-        new SlotIcon[] {
-            new SlotIcon() {
-                Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_1.dds",
-                Probability = 0.2f,
-                Color = Color.Red,
-            },
-            new SlotIcon() {
-                Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_13.dds",
-                Probability = 0.1f,
-                Color = Color.Yellow,
-            },
-            new SlotIcon() {
-                Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_7.dds",
-                Probability = 0.05f,
-                Color = Color.Green,
-            }
-        },
-        Color.Purple,
-        3
-    );
-
+    
     public void Draw(Renderer r) {
-        Slots slots = new Slots(cfg);
+        /*Slots slots = new Slots(cfg, null);
         slots.Roll();
         slots.Draw(r);
         /*var sz = r.Size.X / 14f;
@@ -96,33 +75,43 @@ class Root: IDrawable {
 namespace IngameScript {
     partial class Program: MyGridProgram {
         Display display;
-        Root root;
-        IMySoundBlock jk;
-        double LastPlay = 0f;
+        Slots slots;
+
+    SlotGameConfig cfg = new SlotGameConfig(
+        new SlotIcon[] {
+            new SlotIcon() {
+                Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_1.dds",
+                Probability = 0.2f,
+                Color = Color.Red,
+            },
+            new SlotIcon() {
+                Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_13.dds",
+                Probability = 0.1f,
+                Color = Color.Yellow,
+            },
+            new SlotIcon() {
+                Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_7.dds",
+                Probability = 0.05f,
+                Color = Color.Green,
+            }
+        },
+        Color.Purple,
+        3
+    );
 
         public Program() {
+            Tasks.Init(Runtime);
             var disp = GridTerminalSystem.GetBlockWithName("[SLOT] CS0-0") as IMyTextSurfaceProvider;
-            root = new Root();
-            display = new Display(disp.GetSurface(0), root);
+            slots = new Slots(cfg, disp);
             Log.Init(Me.GetSurface(0));
-            display.Update();
-            jk = GridTerminalSystem.GetBlockWithName("JUKEBOX") as IMySoundBlock;
-            Runtime.UpdateFrequency |= UpdateFrequency.Update100;
-            jk.SelectedSound = "Space Elevator";
+            Tasks.Spawn(slots.Roll());
+            Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }
 
         public void Save() {
             
         }
 
-        public void Main(string argument, UpdateType updateSource) {
-            ProcessManager.RunMain(Runtime.TimeSinceLastRun.TotalSeconds);
-            if(ProcessManager.Time - LastPlay >= 30f) {
-                LastPlay = ProcessManager.Time;
-                jk.Play();
-                display.Update();
-            }
-        }
-
+        public void Main(string argument, UpdateType updateSource) => Tasks.RunMain();
     }
 }
