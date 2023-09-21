@@ -55,7 +55,6 @@ public class SlotGameConfig {
 
         return drawnIndex;
     }
-
 }
 
 public struct Slots: IDrawable {
@@ -93,20 +92,4 @@ public struct Slots: IDrawable {
             x += xStep;
         } 
     }
-}
-
-public struct DirectEnumMap<E, V> {
-    public V[] Items;
-    
-    /// Create a new mapping from enum variants to mapped values,
-    /// in the same order as they were defined
-    public DirectEnumMap(params V[] mapped) {
-        var vals = Enum.GetValues(typeof(E)); 
-        if(vals.Length != mapped.Length)
-            throw new Exception("Invalid EnumMap constructor: Not enough or too many items");
-        
-        Items = mapped;
-    }
-
-    public V Get(E variant) => Items[(int)(object)variant];
 }

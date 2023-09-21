@@ -17,6 +17,7 @@ using VRage.Game;
 using VRage;
 using VRageMath;
 using System.Collections.Immutable;
+using SpaceEngineers.Game.Entities.Blocks;
 
 struct Text: IDrawable {
     StringBuilder _text;
@@ -96,6 +97,8 @@ namespace IngameScript {
     partial class Program: MyGridProgram {
         Display display;
         Root root;
+        IMySoundBlock jk;
+        double LastPlay = 0f;
 
         public Program() {
             var disp = GridTerminalSystem.GetBlockWithName("[SLOT] CS0-0") as IMyTextSurfaceProvider;
@@ -103,6 +106,9 @@ namespace IngameScript {
             display = new Display(disp.GetSurface(0), root);
             Log.Init(Me.GetSurface(0));
             display.Update();
+            jk = GridTerminalSystem.GetBlockWithName("JUKEBOX") as IMySoundBlock;
+            Runtime.UpdateFrequency |= UpdateFrequency.Update100;
+            jk.SelectedSound = "Space Elevator";
         }
 
         public void Save() {
@@ -110,11 +116,13 @@ namespace IngameScript {
         }
 
         public void Main(string argument, UpdateType updateSource) {
-            display.Update();
-            Process.RunMain(Runtime.TimeSinceLastRun.TotalSeconds);
+            ProcessManager.RunMain(Runtime.TimeSinceLastRun.TotalSeconds);
+            if(ProcessManager.Time - LastPlay >= 30f) {
+                LastPlay = ProcessManager.Time;
+                jk.Play();
+                display.Update();
+            }
         }
 
     }
 }
-
-
