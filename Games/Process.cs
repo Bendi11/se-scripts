@@ -13,9 +13,13 @@ public enum Yield {
 
 /// Internal state for a single task plate, containing the return value
 public class Task {
+    /// Used for both the return value of the task and for notification values received by the task
     public object Scratch;
+    /// The state machine built by the C# compiler
     public IEnumerator<Yield> Process;
+    /// The last returned task status of the process
     public Yield Status;
+    /// Handle to the task that is waiting on this task to complete
     public Task Waiter;
 
     public Task(IEnumerator<Yield> proc) {
@@ -81,7 +85,7 @@ public static class Tasks {
             bool more = task.Process.MoveNext();
             _currentTask = null;
             task.Status = task.Process.Current;
-            if(!more) Kill(task);
+            if(!more || task.Status == Yield.Kill) Kill(task);
             else Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }
     }
@@ -101,12 +105,17 @@ public static class Tasks {
     
     /// Sleep the current task until the given timespan has passed
     public static Yield WaitMs(long ms) {
-        _timers.Add(Time + ms, Current);
+        long time = Time + ms;
+        for(;;) {
+            if(_timers.ContainsKey(time)) {
+                time += 1;
+            } else {
+                _timers.Add(time, Current);
+                break;
+            }
+        }
         return Yield.Await;
     }
-
-    /// Exit the process without a return value
-    public static void Die() => Kill(Current);
     
     /// Return a value from this task, notifying any tasks that are awaiting a value from it
     public static void Return<T>(T value) {

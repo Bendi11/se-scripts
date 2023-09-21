@@ -4,20 +4,23 @@ using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
+/// A renderer allowing a much better API for rendering complex objects with the sprite API
 public struct Renderer {
     public IMyTextSurface _root;
-    public MySpriteDrawFrame _frame;
+    public MySpriteDrawFrame? _frame;
     public Vector2 Translation; 
     public Vector2 ScaleFactor;
     public float Rotation;
     public Color? Color;
-
+    
+    /// Get the size of the current drawing area
     public Vector2 Size {
         get {
             return _root.SurfaceSize / ScaleFactor;
         }
     }
-
+    
+    /// Render the given sprite utilizing the preset transformations stored in this `Renderer`
     public void Draw(MySprite sprite) {
         sprite.Alignment = TextAlignment.CENTER;
         if(Color.HasValue) {
@@ -37,9 +40,10 @@ public struct Renderer {
         pos.Rotate(Rotation);
         sprite.Position = pos + Translation;
         
-        _frame.Add(sprite);
+        _frame.Value.Add(sprite);
     }
-
+    
+    /// Draw the given IDrawable object using the transformations stored
     public void Draw(IDrawable drawable) => drawable.Draw(this);
     
     public void SetColor(Color c) => Color = c;
@@ -79,7 +83,7 @@ public struct Renderer {
         return me;
     }
 
-
+    /// Add a new renderer layer, used to apply temporary transformations before restoring
     public Renderer Push() => new Renderer() {
         _frame = _frame,
         Translation = Translation,
@@ -87,47 +91,30 @@ public struct Renderer {
         Rotation = Rotation,
         Color = Color,
     };
-
+    
+    /// Create a new Renderer from the given text surface
     public Renderer(IMyTextSurface root) {
         _root = root;
-        _frame = root.DrawFrame();
         Translation = (root.TextureSize - root.SurfaceSize) / 2f;
         var scale = Math.Min(root.SurfaceSize.X, root.SurfaceSize.Y);
         ScaleFactor = root.SurfaceSize / 2f;
         Rotation = 0;
         Color = null;
+        _frame = null;
         Translate(new Vector2(1f, 1f));
         ScaleFactor = new Vector2(scale, scale) / 2f;
     }
-
-    public void Dispose() => _frame.Dispose();
-    public MySpriteCollection Collection() => _frame.ToCollection();
-}
-
-/// <summary>
-/// Top-level interface for rendering sprites + updating sprite surfaces without recomputing layout
-/// </summary>
-public struct Display {
-    IMyTextSurface _surface;
-    IDrawable _root;
     
-    /// <summary>
-    /// Create a new display interface from the surface that will be drawn to and the root
-    /// widget to render
-    /// </summary>
-    public Display(IMyTextSurface surface, IDrawable root) {
-        _surface = surface;
-        _root = root;
-        _surface.ContentType = ContentType.SCRIPT;
-        _surface.Script = "";
-    }
-
-    public void Update() {
-        var render = new Renderer(_surface);
-        _root.Draw(render);
-        render.Dispose();
+    /// Render all sprites of the given root object
+    public void DrawRoot(IDrawable root) {
+        _frame = _root.DrawFrame();
+        root.Draw(this);
+        _frame.Value.Dispose();
+        _frame = null;
     }
 }
+
+
 
 public interface IDrawable {
     void Draw(Renderer r);

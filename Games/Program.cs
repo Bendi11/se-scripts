@@ -74,36 +74,35 @@ class Root: IDrawable {
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-        Display display;
         Slots slots;
 
-    SlotGameConfig cfg = new SlotGameConfig(
-        new SlotIcon[] {
-            new SlotIcon() {
-                Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_1.dds",
-                Probability = 0.2f,
-                Color = Color.Red,
+        SlotGameConfig cfg = new SlotGameConfig(
+            new SlotIcon[] {
+                new SlotIcon() {
+                    Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_1.dds",
+                    Probability = 0.2f,
+                    Color = Color.Red,
+                },
+                new SlotIcon() {
+                    Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_13.dds",
+                    Probability = 0.1f,
+                    Color = Color.Yellow,
+                },
+                new SlotIcon() {
+                    Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_7.dds",
+                    Probability = 0.05f,
+                    Color = Color.Green,
+                }
             },
-            new SlotIcon() {
-                Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_13.dds",
-                Probability = 0.1f,
-                Color = Color.Yellow,
-            },
-            new SlotIcon() {
-                Sprite = @"Textures\FactionLogo\Builders\BuilderIcon_7.dds",
-                Probability = 0.05f,
-                Color = Color.Green,
-            }
-        },
-        Color.Purple,
-        3
-    );
+            Color.Purple,
+            3
+        );
 
         public Program() {
+            Log.Init(Me.GetSurface(0));
             Tasks.Init(Runtime);
             var disp = GridTerminalSystem.GetBlockWithName("[SLOT] CS0-0") as IMyTextSurfaceProvider;
             slots = new Slots(cfg, disp);
-            Log.Init(Me.GetSurface(0));
             Tasks.Spawn(slots.Roll());
             Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }
@@ -112,6 +111,13 @@ namespace IngameScript {
             
         }
 
-        public void Main(string argument, UpdateType updateSource) => Tasks.RunMain();
+        public void Main(string argument, UpdateType updateSource) {
+            if(argument == "roll") { Tasks.Spawn(slots.Roll()); }
+            try {
+            Tasks.RunMain();
+            } catch(Exception e) {
+                Log.Panic($"{e}");
+            } 
+        }
     }
 }

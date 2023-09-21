@@ -64,7 +64,10 @@ public struct Slots: IDrawable {
     public SlotGameConfig Config;
     /// Storage for the generated slot icons, used to render onscreen 
     SelectedIcon[] _selectedIcons;
-    IMyTextSurface _surface;
+    /// Renderer used to draw the slots onscreen
+    Renderer _render;
+    /// Mutex used to stop rolls from overlapping
+    static bool _mutex;
 
     struct SelectedIcon {
         public int Index;
@@ -75,33 +78,58 @@ public struct Slots: IDrawable {
     public Slots(SlotGameConfig cfg, IMyTextSurfaceProvider seat) {
         Config = cfg;
         _selectedIcons = new SelectedIcon[cfg.ReelsCount];
-        _surface = seat.GetSurface(0);
+        _render = new Renderer(seat.GetSurface(0));
+        _mutex = false;
     }
     
     /// Render a roll animation and select random icons for each reel
     public IEnumerator<Yield> Roll() {
-        for(int i = 0; i < _selectedIcons.Length; ++i) {
-            for(int k = 0; k < 20; ++k) {
-                for(int j = i; j < _selectedIcons.Length; ++j) {
-                    _selectedIcons[j] = new SelectedIcon() {
-                        Index = Config.RandomIcon(),
-                        Final = false,
-                    };
-                }
-                
-                var render = new Renderer(_surface);
-                render.Draw(this);
-                render.Dispose();
+        if(_mutex) {
+            yield return Yield.Kill;
+        } else {
+            _mutex = true;
+        }
+
+        /// Roll random but unique icons for a time
+        for(int i = 0; i < 20; ++i) {
+            UniqueRandomIcons(0); 
+            _render.DrawRoot(this);
+            yield return Tasks.WaitMs(50);
+        }
+
+        // Now select each icon in quick succession
+        for(int reel = 0; reel < Config.ReelsCount; ++reel) {
+            _selectedIcons[reel] = new SelectedIcon() {
+                Index = Config.RandomIcon(),
+                Final = true,
+            };
+
+            for(int i = 0; i < 5; ++i) {
+                UniqueRandomIcons(reel + 1);
+                _render.DrawRoot(this);
                 yield return Tasks.WaitMs(50);
             }
-            _selectedIcons[i].Final = true;
         }
-        var render1 = new Renderer(_surface);
-        render1.Draw(this);
-        render1.Dispose();
+
+        _render.DrawRoot(this);
+        _mutex = false;
     }
     
-    /// Generate a random icon for the 
+    /// Generate a random unique icon for the given reel range
+    void UniqueRandomIcons(int reelOffset) {
+        for(int reel = reelOffset; reel < Config.ReelsCount; ++reel) {
+            var selected = Config.RandomIcon();
+            if(selected == _selectedIcons[reel].Index)
+                selected = (selected + 1) % (Config.Slots.Length - 1);
+
+            _selectedIcons[reel] = new SelectedIcon() {
+                Index = selected,
+                Final = false,
+            };
+        }
+    }
+    
+    /// Render this slot machine's selected icons on a screen
     public void Draw(Renderer r) {
         r._root.ScriptBackgroundColor = Config.Background;
         r.Translate(-r.Size.X / 2f, 0f);
