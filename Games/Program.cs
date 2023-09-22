@@ -48,7 +48,6 @@ struct Text: IDrawable {
 }
 
 class Root: IDrawable {
-    
     public void Draw(Renderer r) {
         /*Slots slots = new Slots(cfg, null);
         slots.Roll();
@@ -112,12 +111,16 @@ namespace IngameScript {
         }
 
         public void Main(string argument, UpdateType updateSource) {
-            if(argument == "roll") { Tasks.Spawn(slots.Roll()); }
-            try {
-            Tasks.RunMain();
-            } catch(Exception e) {
-                Log.Panic($"{e}");
-            } 
+            if(updateSource == UpdateType.Trigger) {
+                if(argument.StartsWith("SENS-")) {
+                    var args = argument.Substring(0, 5).Split('-');
+                    if(args.Length == 2) {
+                    
+                    }
+                }
+            } else {
+                Tasks.RunMain();
+            }
         }
     }
 }
