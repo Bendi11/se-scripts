@@ -1,5 +1,6 @@
 
 using System;
+using System.Text;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
@@ -43,8 +44,23 @@ public struct Renderer {
         _frame.Value.Add(sprite);
     }
     
+    /// Draw the given text string, scaling it to fit into the frame
+    public void Draw(StringBuilder txt) {
+        var sz = _root.MeasureStringInPixels(txt, "White", 1f);
+        var scale = Math.Max(sz.X, sz.Y);
+        Draw(new MySprite() {
+            Type = SpriteType.TEXT,
+            Data = txt.ToString(),
+            FontId = "White",
+            RotationOrScale = 1f / scale,
+        });
+    }
+    
+    /// Draw the given text, scaling it to fit in the current frame
+    public void Draw(string txt) => Draw(new StringBuilder(txt));
+    
     /// Draw the given IDrawable object using the transformations stored
-    public void Draw(IDrawable drawable) => drawable.Draw(this);
+    public void Draw<T>(T drawable) where T: IDrawable => drawable.Draw(this);
     
     public void SetColor(Color c) => Color = c;
     public void Translate(float x, float y) => Translate(new Vector2(x, y));
@@ -113,8 +129,6 @@ public struct Renderer {
         _frame = null;
     }
 }
-
-
 
 public interface IDrawable {
     void Draw(Renderer r);

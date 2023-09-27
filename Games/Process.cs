@@ -55,7 +55,7 @@ public static class Tasks {
     }
     
     /// Excecute the given method asynchronously, call Receive after to receive the result of the method
-    public static Yield Async<T>(IEnumerator<Yield> proc) {
+    public static Yield Async(IEnumerator<Yield> proc) {
         var task = new Task(proc);
         task.Waiter = Current;
         Spawn(task);
@@ -118,9 +118,9 @@ public static class Tasks {
     }
     
     /// Return a value from this task, notifying any tasks that are awaiting a value from it
-    public static void Return<T>(T value) {
+    public static Yield Return<T>(T value) {
         Current.Scratch = value;
-        Kill(Current);
+        return Yield.Kill;
     }
     
     /// Wake the given process by reference

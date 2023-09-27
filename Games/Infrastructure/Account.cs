@@ -4,6 +4,8 @@
 public class Account {
     public long EntityId;
     public long SeatedId;
+
+    public const long INVALID_ID = (long)-1;
     
     /// Name of the player as recorded by a sensor
     public string Name;
