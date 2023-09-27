@@ -23,6 +23,7 @@ public class ScriptBuilder: IDisposable {
 
     DeadCodeRemover DeadCodePass;
     Renamer RenamePass;
+    bool _workspaceFailed = false;
 
     static ScriptBuilder() { MSBuildLocator.RegisterDefaults(); }
     
@@ -50,12 +51,16 @@ public class ScriptBuilder: IDisposable {
         return me;
     }
 
-    public void Dispose() {
+    void IDisposable.Dispose() {
         workspace.Dispose();
     }
 
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
     async public Task<List<CSharpSyntaxNode>> BuildProject() {
+        if(_workspaceFailed) {
+            return new List<CSharpSyntaxNode>();
+        }
+
         //Collect diagnostics before renaming identifiers
         var diags = (await Common.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning);
 
@@ -153,7 +158,15 @@ public class ScriptBuilder: IDisposable {
         return null;
     }
 
+
     async private Task<Project> Init(string slnPath, string projectPath) {
+        workspace.WorkspaceFailed += (_, wsDiag) => {
+            if(wsDiag.Diagnostic.Kind == WorkspaceDiagnosticKind.Warning) { return; }
+            _workspaceFailed = true;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine(wsDiag.Diagnostic.Message);
+        };
+
         string slnFile = slnPath, projectFile = projectPath;
         try {
             slnFile = FindPath(slnPath, ".SLN") ??
@@ -203,7 +216,7 @@ public class ScriptBuilder: IDisposable {
 
             scriptDir = msbuildProject.GetPropertyValue("SpaceEngineersScript");
             if(scriptDir.Length == 0) { throw new Exception("No SpaceEngineersScript property defined in env.csproj"); }
-
+            
             return project;
         }
     }

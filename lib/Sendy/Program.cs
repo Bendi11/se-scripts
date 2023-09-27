@@ -63,6 +63,7 @@ namespace IngameScript {
                 } break;
 
                 case RESPONSE: {
+            yield return Yield.Continue;
                     if(!(msg.Data is MyTuple<long, object>)) { Log.Warn($"Invalid response payload: {msg.Data.GetType()}"); return; }
                     var data = (MyTuple<long, object>)msg.Data;
                     Nullable<Response> resp;
