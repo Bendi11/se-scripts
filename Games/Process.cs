@@ -98,8 +98,13 @@ public static class Tasks {
         task.Status = Yield.Kill;
         task.Process.Dispose();
         task.Process = null;
-        if(task.Waiter != null && task.Scratch != null) {
-            Notify(task.Waiter, task.Scratch);
+        if(task.Waiter != null) {
+            if(task.Scratch != null) {
+                Notify(task.Waiter, task.Scratch);
+            } else {
+                Kill(task.Waiter);
+            }
+            task.Waiter = null;
         }
     }
     

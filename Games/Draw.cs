@@ -9,7 +9,7 @@ using VRageMath;
 public struct Renderer {
     public IMyTextSurface _root;
     public MySpriteDrawFrame? _frame;
-    public Vector2 Translation; 
+    public Vector2 Translation, Cursor; 
     public Vector2 ScaleFactor;
     public float Rotation;
     public Color? Color;
@@ -52,7 +52,7 @@ public struct Renderer {
             Type = SpriteType.TEXT,
             Data = txt.ToString(),
             FontId = "White",
-            RotationOrScale = 1f / scale,
+            RotationOrScale = 2f / scale,
         });
     }
     
@@ -62,7 +62,7 @@ public struct Renderer {
     /// Draw the given IDrawable object using the transformations stored
     public void Draw<T>(T drawable) where T: IDrawable => drawable.Draw(this);
     
-    public void SetColor(Color c) => Color = c;
+    public void SetColor(Color? c) => Color = c;
     public void Translate(float x, float y) => Translate(new Vector2(x, y));
     public void Translate(Vector2 pos) {
         pos *= ScaleFactor;
@@ -74,7 +74,7 @@ public struct Renderer {
     public void Scale(Vector2 scale) => ScaleFactor *= scale;
     public void Rotate(float r) => Rotation += r;
 
-    public Renderer Colored(Color c) {
+    public Renderer Colored(Color? c) {
         var me = Push();
         me.SetColor(c);
         return me;
@@ -106,6 +106,7 @@ public struct Renderer {
         ScaleFactor = ScaleFactor,
         Rotation = Rotation,
         Color = Color,
+        Cursor = Cursor,
     };
     
     /// Create a new Renderer from the given text surface
@@ -117,6 +118,7 @@ public struct Renderer {
         Rotation = 0;
         Color = null;
         _frame = null;
+        Cursor = Vector2.Zero;
         Translate(new Vector2(1f, 1f));
         ScaleFactor = new Vector2(scale, scale) / 2f;
     }
