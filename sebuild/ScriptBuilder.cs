@@ -60,8 +60,9 @@ public class ScriptBuilder: IDisposable {
 
         //Collect diagnostics before renaming identifiers
         if(Common.Args.RequiresAnalysis) {
-            using(var prog = new PassProgress("Analyzing project")) {
-                diags =(await Common.Project.GetCompilationAsync())!
+            using(var prog = new PassProgress("Analyzing project", false)) {
+                prog.Report(0);
+                diags = (await Common.Project.GetCompilationAsync())!
                     .GetDiagnostics()
                     .Where(d => d.Severity >= DiagnosticSeverity.Warning);
             }
@@ -97,7 +98,7 @@ public class ScriptBuilder: IDisposable {
         }
         
         using(var prog = new PassProgress("Flattening Declarations")) {
-            return await Preprocessor.Build(Common);
+            return await Preprocessor.Build(Common, prog);
         }
     }
 

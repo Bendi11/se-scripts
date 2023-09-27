@@ -34,11 +34,26 @@ public class PassProgress: IProgress<int>, IDisposable {
     public string? Message = null;
     int _total = 0;
     Stopwatch _stopWatch;
+    bool _useNumbers;
+    CancellationTokenSource? _tick = null;
 
-    public PassProgress(string name) {
+    public PassProgress(string name, bool useNumbers = true) {
         _name = name;
         _stopWatch = new Stopwatch();
         _stopWatch.Start();
+        _useNumbers = useNumbers;
+        if(!_useNumbers) {
+            _tick = new CancellationTokenSource();
+            Task.Run(
+                    async () => {
+                    for(;;) {
+                        await Task.Delay(100);
+                        Report(1);
+                    }
+                },
+                _tick.Token
+            );
+        }
     }
 
     static readonly char[] TICKER = {'▉', '▊', '▋', '▌', '▍', '▎', '▏', '▎', '▍', '▌', '▋', '▊', '▉'};
@@ -54,16 +69,21 @@ public class PassProgress: IProgress<int>, IDisposable {
         _total += value;
         Console.CursorVisible = false;
         ClearLine();
-        Console.Write($"⟳ {_name}: [{_total:0,0}] {TICKER[_total % TICKER.Count()]}{(Message is null ? "" : $" - {Message}")}\r");
+        var total = _useNumbers ? $"[{_total:0,0}]" : "";
+        Console.Write($"⟳ {_name}: {total} {TICKER[_total % TICKER.Count()]}{(Message is null ? "" : $" - {Message}")}\r");
     }
 
     public void Dispose() {
         _stopWatch.Stop();
+        if(_tick is not null) {
+            _tick.Cancel(); 
+        }
         var old = Console.ForegroundColor;
         Console.ForegroundColor = ConsoleColor.Green;
 
         ClearLine();
-        Console.WriteLine($"✓ {_name} - {_total} ({_stopWatch.Elapsed.TotalSeconds:0.000})");
+        var total = _useNumbers ? $"- {_total}" : "";
+        Console.WriteLine($"✓ {_name} {total} ({_stopWatch.Elapsed.TotalSeconds:0.000})");
 
         Console.CursorVisible = true;
         Console.ForegroundColor = old;

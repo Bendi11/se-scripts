@@ -12,30 +12,38 @@ namespace SeBuild;
 public class Preprocessor {
     ScriptCommon Common;
     ConcurrentBag<CSharpSyntaxNode> decls;
+    PassProgress _prog;
 
-    async public static Task<IEnumerable<CSharpSyntaxNode>> Build(ScriptCommon ctx) => await new Preprocessor(ctx).Finish(); 
+    async public static Task<IEnumerable<CSharpSyntaxNode>> Build(ScriptCommon ctx, PassProgress prog)
+        => await new Preprocessor(ctx, prog).Finish(); 
 
-    private Preprocessor(ScriptCommon ctx, ConcurrentBag<CSharpSyntaxNode>? dec = null) {
+    private Preprocessor(ScriptCommon ctx, PassProgress prog, ConcurrentBag<CSharpSyntaxNode>? dec = null) {
         Common = ctx;
+        _prog = prog;
         decls = dec ?? new ConcurrentBag<CSharpSyntaxNode>();
     }
     
     private class PreprocessWalker: CSharpSyntaxWalker {
         ConcurrentBag<CSharpSyntaxNode> decls;
-        public PreprocessWalker(ConcurrentBag<CSharpSyntaxNode> dec) : base(SyntaxWalkerDepth.Node) {
+        PassProgress _prog;
+        public PreprocessWalker(ConcurrentBag<CSharpSyntaxNode> dec, PassProgress prog) : base(SyntaxWalkerDepth.Node) {
             decls = dec;
+            _prog = prog;
         }
 
         public override void VisitStructDeclaration(StructDeclarationSyntax node) {
             decls.Add(node);
+            _prog.Report(1);
         }
 
         public override void VisitEnumDeclaration(EnumDeclarationSyntax node) {
             decls.Add(node);
+            _prog.Report(1);
         }
 
         public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax node) {
             decls.Add(node);
+            _prog.Report(1);
         }
         
         public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
@@ -52,9 +60,11 @@ public class Preprocessor {
             ) {
                 foreach(var member in node.Members) {
                     decls.Add(member);
+                    _prog.Report(1);
                 }
             } else {
                 decls.Add(node);
+                _prog.Report(1);
             }
         }
     }
@@ -74,7 +84,7 @@ public class Preprocessor {
         var syntax = await doc.GetSyntaxTreeAsync() as CSharpSyntaxTree ?? throw new Exception("Cannot compile non-C# files");
         syntax
             .GetRoot()
-            .Accept(new PreprocessWalker(decls));
+            .Accept(new PreprocessWalker(decls, _prog));
     }
 }
 
