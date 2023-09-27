@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -10,31 +11,31 @@ namespace SeBuild;
 /// </summary>
 public class Preprocessor {
     ScriptCommon Common;
-    List<CSharpSyntaxNode> decls;
+    ConcurrentBag<CSharpSyntaxNode> decls;
 
-    async public static Task<List<CSharpSyntaxNode>> Build(ScriptCommon ctx) => await new Preprocessor(ctx).Finish(); 
+    async public static Task<IEnumerable<CSharpSyntaxNode>> Build(ScriptCommon ctx) => await new Preprocessor(ctx).Finish(); 
 
-    private Preprocessor(ScriptCommon ctx, List<CSharpSyntaxNode>? dec = null) {
+    private Preprocessor(ScriptCommon ctx, ConcurrentBag<CSharpSyntaxNode>? dec = null) {
         Common = ctx;
-        decls = dec ?? new List<CSharpSyntaxNode>();
+        decls = dec ?? new ConcurrentBag<CSharpSyntaxNode>();
     }
     
     private class PreprocessWalker: CSharpSyntaxWalker {
-        List<CSharpSyntaxNode> decls;
-        public PreprocessWalker(List<CSharpSyntaxNode> dec) : base(SyntaxWalkerDepth.Trivia) {
+        ConcurrentBag<CSharpSyntaxNode> decls;
+        public PreprocessWalker(ConcurrentBag<CSharpSyntaxNode> dec) : base(SyntaxWalkerDepth.Node) {
             decls = dec;
         }
 
         public override void VisitStructDeclaration(StructDeclarationSyntax node) {
-            lock(decls) { decls.Add(node); }
+            decls.Add(node);
         }
 
         public override void VisitEnumDeclaration(EnumDeclarationSyntax node) {
-            lock(decls) { decls.Add(node); }
+            decls.Add(node);
         }
 
         public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax node) {
-            lock(decls) { decls.Add(node); }
+            decls.Add(node);
         }
         
         public override void VisitClassDeclaration(ClassDeclarationSyntax node) {
@@ -49,14 +50,16 @@ public class Preprocessor {
                         ?? false
                     )
             ) {
-                lock(decls) { decls.AddRange(node.Members); }
+                foreach(var member in node.Members) {
+                    decls.Add(member);
+                }
             } else {
-                lock(decls) { decls.Add(node); }
+                decls.Add(node);
             }
         }
     }
 
-    async private Task<List<CSharpSyntaxNode>> Finish() {
+    async private Task<IEnumerable<CSharpSyntaxNode>> Finish() {
         var tasks = new List<Task>();
         foreach(var doc in from doc in Common.DocumentsIter where doc.Folders.FirstOrDefault() != "obj" select doc) {
             tasks.Add(Task.Run(async () => await Digest(doc)));
@@ -68,9 +71,6 @@ public class Preprocessor {
     }
 
     async private Task Digest(Document doc) {
-        //var dOpts = await doc.GetOptionsAsync();
-        //var opts = FormatterOpts.Apply(dOpts);
-        //var newdoc = await Formatter.FormatAsync(doc, opts);
         var syntax = await doc.GetSyntaxTreeAsync() as CSharpSyntaxTree ?? throw new Exception("Cannot compile non-C# files");
         syntax
             .GetRoot()

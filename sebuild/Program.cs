@@ -5,12 +5,12 @@ namespace SeBuild;
 
 internal class Program {
     static async Task Main(string[] args) {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         await Parser
             .Default
             .ParseArguments<BuildArgs>(args)
             .MapResult(
                 async (BuildArgs build) => {
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
                     var ctx = await ScriptBuilder.Create(build);
 
                     var syntax = await ctx.BuildProject();
@@ -25,22 +25,26 @@ internal class Program {
                         path = build.Output;
                     }
                     
-                    StringBuilder sb = new StringBuilder();
-                    foreach(var decl in syntax) { sb.Append(decl.ToFullString()); }
+                    StringBuilder sb;
+                    sb = new StringBuilder();
+                    foreach(var decl in syntax) { sb.Append(decl.GetText()); }
                     
                     string output = sb.ToString();
-                    using var file = new StreamWriter(File.Create(path));
-
+                    using var file = new StreamWriter(File.Create(path), Encoding.UTF8, 65536);
+                
                     long len = 0;
                     if(build.Minify) {
-                        foreach(var tok in Minifier.Minify(output)) { file.Write(tok); len += tok.Length; }
+                        foreach(var tok in Minifier.Minify(output)) {
+                            file.Write(tok);
+                            len += tok.Length;
+                        }
                     } else {
                         len = output.Length;
                         file.Write(output);
                     }
-                    
-                    sw.Stop();
 
+
+                    sw.Stop();
  
                     Console.Write($"{path} -");
 

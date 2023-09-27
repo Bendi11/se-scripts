@@ -26,4 +26,17 @@ public class BuildArgs {
         HelpText = "Remove dead code not referenced by the Program class"
     )]
     public bool RemoveDead { get; set; }
+    
+    [Option(
+        'D',
+        "diagnostics",
+        Required = false,
+        HelpText = "Print diagnostics for project even if no code size reductions are in place (adds around 2s to build)"
+    )]
+    public bool Diagnostics { get; set; }
+    
+    /// Check if code analysis is required for this project compilation
+    public bool RequiresAnalysis {
+        get => Rename || RemoveDead || Diagnostics;
+    }
 }

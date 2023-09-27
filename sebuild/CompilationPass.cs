@@ -86,8 +86,9 @@ public abstract class CompilationPass {
         }
     }
 
-    public CompilationPass(ScriptCommon ctx) {
+    public CompilationPass(ScriptCommon ctx, PassProgress? progress) {
         Common = ctx;
+        Progress = progress;
     }
     
     /// Execute the pass on the loaded documents, potentially replacing `Solution` with a new solution

@@ -17,11 +17,11 @@ public class DeadCodeRemover: CompilationPass {
         }
     }
 
-    public DeadCodeRemover(ScriptCommon ctx) : base(ctx) {
-        Task.Run(async () => await Init()).Wait();
-    }
+    public DeadCodeRemover(ScriptCommon ctx, PassProgress prog) : base(ctx, prog) {}
 
     public async override Task Execute() {
+        await Init();
+
         var tasks = new List<Task>();
         var map = new Dictionary<DocumentId, SyntaxNode>();
 

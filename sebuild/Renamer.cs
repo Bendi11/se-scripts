@@ -65,7 +65,7 @@ public class Renamer: CompilationPass {
     };
     
 
-    public Renamer(ScriptCommon ctx) : base(ctx) {}
+    public Renamer(ScriptCommon ctx, PassProgress prog) : base(ctx, prog) {}
 
     delegate RenamerWalkerBase ConstructRenamer(SemanticModel sema, List<Task> tasks);
 

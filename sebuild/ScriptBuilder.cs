@@ -4,7 +4,6 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
-using System.Diagnostics;
 
 namespace SeBuild;
 
@@ -21,8 +20,6 @@ public class ScriptBuilder: IDisposable {
 
     public ulong InitialChars = 0;
 
-    DeadCodeRemover DeadCodePass;
-    Renamer RenamePass;
     bool _workspaceFailed = false;
 
     static ScriptBuilder() { MSBuildLocator.RegisterDefaults(); }
@@ -44,10 +41,8 @@ public class ScriptBuilder: IDisposable {
 
         
         me.Common = new ScriptCommon(project.Solution, project.Id, new List<DocumentId>(), args);
-         
+        
         me.GetDocuments(project.Id, new HashSet<ProjectId>());
-        me.DeadCodePass = new DeadCodeRemover(me.Common);
-        me.RenamePass = new Renamer(me.Common);
         return me;
     }
 
@@ -56,42 +51,54 @@ public class ScriptBuilder: IDisposable {
     }
 
     /// <summary>Build the given <c>Project</c> and return a list of declaration <c>CSharpSyntaxNode</c>s</summary>
-    async public Task<List<CSharpSyntaxNode>> BuildProject() {
+    async public Task<IEnumerable<CSharpSyntaxNode>> BuildProject() {
         if(_workspaceFailed) {
             return new List<CSharpSyntaxNode>();
         }
 
+        IEnumerable<Diagnostic>? diags = null;
+
         //Collect diagnostics before renaming identifiers
-        var diags = (await Common.Project.GetCompilationAsync())!.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning);
+        if(Common.Args.RequiresAnalysis) {
+            using(var prog = new PassProgress("Analyzing project")) {
+                diags =(await Common.Project.GetCompilationAsync())!
+                    .GetDiagnostics()
+                    .Where(d => d.Severity >= DiagnosticSeverity.Warning);
+            }
+        }
 
         if(Common.Args.RemoveDead) {
             using(var prog = new PassProgress("Eliminating Dead Code")) {
-                DeadCodePass.Progress = prog;
+                var DeadCodePass = new DeadCodeRemover(Common, prog);
                 await DeadCodePass.Execute();
             }
         }
 
         if(Common.Args.Rename) {
             using(var prog = new PassProgress("Renaming Symbols")) {
-                RenamePass.Progress = prog;
+                var RenamePass = new DeadCodeRemover(Common, prog);
                 await RenamePass.Execute();
             }
         }
+        
+        if(diags is not null) {
+            foreach(var diag in diags) {
+                Console.ForegroundColor = diag.Severity switch {
+                    DiagnosticSeverity.Error => ConsoleColor.Red,
+                    DiagnosticSeverity.Warning => ConsoleColor.Yellow,
+                    DiagnosticSeverity.Info => ConsoleColor.White,
+                    DiagnosticSeverity.Hidden => ConsoleColor.Gray,
+                    var _ => ConsoleColor.White,
+                };
+                Console.WriteLine(diag);
+            }
 
-        foreach(var diag in diags) {
-            Console.ForegroundColor = diag.Severity switch {
-                DiagnosticSeverity.Error => ConsoleColor.Red,
-                DiagnosticSeverity.Warning => ConsoleColor.Yellow,
-                DiagnosticSeverity.Info => ConsoleColor.White,
-                DiagnosticSeverity.Hidden => ConsoleColor.Gray,
-                var _ => ConsoleColor.White,
-            };
-            Console.WriteLine(diag);
+            Console.ResetColor();
         }
-
-        Console.ResetColor();
-
-        return await Preprocessor.Build(Common);
+        
+        using(var prog = new PassProgress("Flattening Declarations")) {
+            return await Preprocessor.Build(Common);
+        }
     }
 
     private void GetDocuments(ProjectId id, HashSet<ProjectId> loadedProjects) {
