@@ -42,7 +42,7 @@ public static class Tasks {
     public static IMyGridProgramRuntimeInfo Runtime;
     
     /// Active tasks
-    static HashSet<Task> _procs = new HashSet<Task>();
+    static List<Task> _procs = new List<Task>();
     /// Timers set to wake tasks at a given timestamp 
     static SortedList<double, Task> _timers = new SortedList<double, Task>();
 
@@ -70,7 +70,6 @@ public static class Tasks {
     /// Run the main method with the given time step from a Runtime
     public static void RunMain() {
         Time += (long)Runtime.TimeSinceLastRun.TotalMilliseconds;
-        _procs.RemoveWhere(t => t.Status != Yield.Continue);
         var first = _timers.FirstOrDefault();
         if(first.Value != null) {
             Runtime.UpdateFrequency |= UpdateFrequency.Once;
@@ -80,24 +79,38 @@ public static class Tasks {
             }
         }
 
-        foreach(var task in _procs) {
+        for(int i = _procs.Count - 1; i >= 0; --i) {
+            var task = _procs[i];
+            if(task.Status != Yield.Continue) {
+                continue;
+            }
             _currentTask = task;
             bool more = task.Process.MoveNext();
             _currentTask = null;
             task.Status = task.Process.Current;
-            if(!more || task.Status == Yield.Kill) Kill(task);
+            if(!more || task.Status == Yield.Kill) {
+                Kill(task);
+            }
             else Runtime.UpdateFrequency |= UpdateFrequency.Once;
+
+            if(task.Status == Yield.Await) {
+                Sleep(task);
+            }
         }
     }
 
     /// Put the given task to sleep
-    public static void Sleep(Task task) => task.Status = Yield.Await;
+    public static void Sleep(Task task) {
+        task.Status = Yield.Await;
+        _procs.Remove(task);
+    }
     
     /// Kill the given task
     public static void Kill(Task task) {
         task.Status = Yield.Kill;
         task.Process.Dispose();
         task.Process = null;
+        _procs.Remove(task);
         if(task.Waiter != null) {
             if(task.Scratch != null) {
                 Notify(task.Waiter, task.Scratch);
@@ -132,11 +145,12 @@ public static class Tasks {
     public static void Wake(Task task) {
         task.Status = Yield.Continue;
         _procs.Add(task);
+        Runtime.UpdateFrequency |= UpdateFrequency.Once;
     }
     
     /// Notify a task of a new value, waking it from an await
     public static void Notify(Task task, object val) {
-        if(task.Status != Yield.Kill && task.Scratch == null) {
+        if(task.Status != Yield.Kill) {
             task.Scratch = val;
             Wake(task);
         }

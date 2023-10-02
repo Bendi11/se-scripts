@@ -1,23 +1,7 @@
-using Sandbox.Game.EntityComponents;
 using Sandbox.ModAPI.Ingame;
-using Sandbox.ModAPI.Interfaces;
-using SpaceEngineers.Game.ModAPI.Ingame;
-using System.Collections.Generic;
-using System.Collections;
-using System.Linq;
 using System.Text;
-using System;
-using VRage.Collections;
-using VRage.Game.Components;
 using VRage.Game.GUI.TextPanel;
-using VRage.Game.ModAPI.Ingame.Utilities;
-using VRage.Game.ModAPI.Ingame;
-using VRage.Game.ObjectBuilders.Definitions;
-using VRage.Game;
-using VRage;
 using VRageMath;
-using System.Collections.Immutable;
-using SpaceEngineers.Game.Entities.Blocks;
 
 struct Text: IDrawable {
     StringBuilder _text;
@@ -73,7 +57,8 @@ class Root: IDrawable {
 
 namespace IngameScript {
     partial class Program: MyGridProgram {
-        Slots slots;
+        //Slots slots;
+        NumPad pad;
 
         SlotGameConfig cfg = new SlotGameConfig(
             new SlotIcon[] {
@@ -101,8 +86,10 @@ namespace IngameScript {
             Log.Init(Me.GetSurface(0));
             Tasks.Init(Runtime);
             var disp = GridTerminalSystem.GetBlockWithName("[SLOT] CS0-0") as IMyTextSurfaceProvider;
-            slots = new Slots(cfg, disp);
-            Tasks.Spawn(slots.Roll());
+            //slots = new Slots(cfg, disp);
+            pad = new NumPad(disp as IMyShipController, 6, true, Color.White);
+            //Tasks.Spawn(slots.Roll());
+            Tasks.Spawn(pad.Input(new Renderer(disp.GetSurface(0)).Colored(Color.Red)));
             Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }
 
@@ -111,7 +98,8 @@ namespace IngameScript {
         }
 
         public void Main(string argument, UpdateType updateSource) {
-            if(updateSource == UpdateType.Trigger) {
+            if(updateSource != UpdateType.Once) {
+                //Tasks.Spawn(slots.Roll());
                 if(argument.StartsWith("SENS-")) {
                     var args = argument.Substring(0, 5).Split('-');
                     if(args.Length == 2) {

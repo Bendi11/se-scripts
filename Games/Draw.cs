@@ -36,7 +36,7 @@ public struct Renderer {
             sprite.RotationOrScale += Rotation;
         }
         
-        var pos = sprite.Position.Value;
+        var pos = sprite.Position.HasValue ? sprite.Position.Value : Vector2.Zero;
         pos *= ScaleFactor;
         pos.Rotate(Rotation);
         sprite.Position = pos + Translation;
@@ -45,19 +45,20 @@ public struct Renderer {
     }
     
     /// Draw the given text string, scaling it to fit into the frame
-    public void Draw(StringBuilder txt) {
+    public void Draw(StringBuilder txt, float width) {
         var sz = _root.MeasureStringInPixels(txt, "White", 1f);
         var scale = Math.Max(sz.X, sz.Y);
         Draw(new MySprite() {
             Type = SpriteType.TEXT,
             Data = txt.ToString(),
             FontId = "White",
-            RotationOrScale = 2f / scale,
+            RotationOrScale = 60f * width / scale,
+            Position = new Vector2(0f, -(_root.MeasureStringInPixels(txt, "White", 60f * width / scale).Y / 2f) / ScaleFactor.Y),
         });
     }
     
     /// Draw the given text, scaling it to fit in the current frame
-    public void Draw(string txt) => Draw(new StringBuilder(txt));
+    public void Draw(string txt, float width) => Draw(new StringBuilder(txt), width);
     
     /// Draw the given IDrawable object using the transformations stored
     public void Draw<T>(T drawable) where T: IDrawable => drawable.Draw(this);
@@ -101,6 +102,7 @@ public struct Renderer {
 
     /// Add a new renderer layer, used to apply temporary transformations before restoring
     public Renderer Push() => new Renderer() {
+        _root = _root,
         _frame = _frame,
         Translation = Translation,
         ScaleFactor = ScaleFactor,
@@ -126,9 +128,11 @@ public struct Renderer {
     /// Render all sprites of the given root object
     public void DrawRoot(IDrawable root) {
         _frame = _root.DrawFrame();
-        root.Draw(this);
-        _frame.Value.Dispose();
-        _frame = null;
+        if(_frame.HasValue) {
+            root.Draw(this);
+            _frame.Value.Dispose();
+            _frame = null;
+        }
     }
 }
 

@@ -77,7 +77,7 @@ public class ScriptBuilder: IDisposable {
 
         if(Common.Args.Rename) {
             using(var prog = new PassProgress("Renaming Symbols")) {
-                var RenamePass = new DeadCodeRemover(Common, prog);
+                var RenamePass = new Renamer(Common, prog);
                 await RenamePass.Execute();
             }
         }
