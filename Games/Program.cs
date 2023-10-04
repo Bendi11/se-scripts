@@ -1,4 +1,6 @@
 using Sandbox.ModAPI.Ingame;
+using System;
+using System.Collections.Generic;
 using System.Text;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
@@ -58,7 +60,7 @@ class Root: IDrawable {
 namespace IngameScript {
     partial class Program: MyGridProgram {
         //Slots slots;
-        NumPad pad;
+        InputPad pad;
 
         SlotGameConfig cfg = new SlotGameConfig(
             new SlotIcon[] {
@@ -82,14 +84,20 @@ namespace IngameScript {
             3
         );
 
+        IMyTextSurfaceProvider disp;
+
+        IEnumerator<Yield> MainTask() {
+            yield return Tasks.Async(pad.Input(new Renderer(disp.GetSurface(0)).Colored(Color.Red)));
+            var txt = Tasks.Receive<string>();
+            Log.Error($"Entered: '{txt}' - {txt.GetHashCode()}");
+        }
+
         public Program() {
             Log.Init(Me.GetSurface(0));
             Tasks.Init(Runtime);
-            var disp = GridTerminalSystem.GetBlockWithName("[SLOT] CS0-0") as IMyTextSurfaceProvider;
-            //slots = new Slots(cfg, disp);
-            pad = new NumPad(disp as IMyShipController, 6, true, Color.White);
-            //Tasks.Spawn(slots.Roll());
-            Tasks.Spawn(pad.Input(new Renderer(disp.GetSurface(0)).Colored(Color.Red)));
+            disp = GridTerminalSystem.GetBlockWithName("[SLOT] CS0-0") as IMyTextSurfaceProvider;
+            pad = new InputPad(disp as IMyShipController, 64, false, Color.White);
+            Tasks.Spawn(MainTask());
             Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }
 
@@ -99,7 +107,6 @@ namespace IngameScript {
 
         public void Main(string argument, UpdateType updateSource) {
             if(updateSource != UpdateType.Once) {
-                //Tasks.Spawn(slots.Roll());
                 if(argument.StartsWith("SENS-")) {
                     var args = argument.Substring(0, 5).Split('-');
                     if(args.Length == 2) {

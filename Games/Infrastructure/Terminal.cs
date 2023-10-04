@@ -7,9 +7,51 @@ using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
 /// A widget meant to be used to enter numeric PINs
-public struct NumPad: IDrawable {
+public struct InputPad: IDrawable {
     /// Entered digits
-    byte[] _entry;
+    char[] _entry;
+
+    int _enteredLen {
+        get {
+            int len = 0;
+            for(;len < _entry.Length; ++len) {
+                if(_entry[len] == INVALID_DIGIT) break;
+            }
+            return len;
+        }
+    }
+
+    const char
+        INVALID_DIGIT = (char)0,
+        BACKSPACE_K = (char)8,
+        SHIFTIN_K   = (char)15,
+        SHIFTOUT_K  = (char)14,
+        SPACE_K     = (char)7,
+        ENTER_K     = (char)13;
+    
+    /// Lines to draw for the input grid
+    static string[] _chars = {
+        $"`1234567890-={BACKSPACE_K}",
+        "qwertyuiop[]\\",
+        $"asdfghjkl;'{ENTER_K}",
+        $"{SHIFTIN_K}zxcvbnm,./",
+        $"{SPACE_K}",
+    };
+
+    static string[] _shiftChars = {
+        $"~!@#$%^&*()_+{BACKSPACE_K}",
+        "QWERTYUIOP{}|",
+        $"ASDFGHJKL:\"{ENTER_K}",
+        $"{SHIFTOUT_K}ZXCVBNM<>?",
+        $"{SPACE_K}"
+    };
+
+    string[] _currentChars {
+        get { return _shift ? _shiftChars : _chars; }
+    }
+    
+    /// If shift has been held down
+    bool _shift;
     
     /// If entered digits should be hidden
     bool _private;
@@ -18,16 +60,10 @@ public struct NumPad: IDrawable {
     IMyShipController _seat;
     
     /// Currently selected box
-    byte _selection;
+    Vector2I _selection;
     
     /// Color used to indicate a pad is selected
     Color _selectedColor;
-    
-    const byte ZERO_INDEX = 2,
-        NINE_INDEX = 11,
-        ENTER_INDEX = 0,
-        BACKSPACE_INDEX = 1,
-        INVALID_DIGIT = 255;
 
     static MySprite DIGITBOX = new MySprite() {
         Type = SpriteType.TEXTURE,
@@ -41,14 +77,14 @@ public struct NumPad: IDrawable {
     /// Create a new number pad with the given limit on entered digits
     ///
     /// max_digits should not be 0
-    public NumPad(IMyShipController seat, int max_digits, bool isPrivate, Color selectedColor) {
-        _entry = new byte[max_digits];
+    public InputPad(IMyShipController seat, int max_digits, bool isPrivate, Color selectedColor) {
+        _entry = new char[max_digits];
         for(int i = 0; i < max_digits; ++i) _entry[i] = INVALID_DIGIT;
         _private = isPrivate;
         _seat = seat;
-        _selection = 0;
         _selectedColor = selectedColor;
-        _selection = ZERO_INDEX;
+        _selection = Vector2I.Zero;
+        _shift = false;
     }
     
     /// Render the number pad to the given renderer and accept input until a full number has been entered
@@ -60,15 +96,18 @@ public struct NumPad: IDrawable {
             yield return Yield.Continue;
             yield return Tasks.Async(ShipControllerInput.ReadKey(_seat));
             var key = Tasks.Receive<Key>();
+
+            char select = _currentChars[_selection.Y][_selection.X];
             switch(key) {
-                case Key.W: _selection += 3; break;
-                case Key.S: _selection -= 3; break;
-                case Key.A: _selection += 1; break;
-                case Key.D: _selection -= 1; break;
+                case Key.W: _selection.Y -= 1; break;
+                case Key.S: _selection.Y += 1; break;
+                case Key.A: _selection.X -= 1; break;
+                case Key.D: _selection.X += 1; break;
+                case Key.C: _shift = !_shift; break;
                 case Key.Space: {
-                    switch(_selection) {
-                        case ENTER_INDEX: yield return Tasks.Return(GetEntry()); break;
-                        case BACKSPACE_INDEX: {
+                    switch(select) {
+                        case ENTER_K: yield return Tasks.Return(new String(_entry).Substring(0, _enteredLen)); break;
+                        case BACKSPACE_K: {
                             for(int i = _entry.Length - 1; i >= 0; --i) {
                                 if(_entry[i] != INVALID_DIGIT) {
                                     _entry[i] = INVALID_DIGIT;
@@ -76,10 +115,13 @@ public struct NumPad: IDrawable {
                                 }
                             }
                         } break;
+                        case SHIFTIN_K: _shift = true; break;
+                        case SHIFTOUT_K: _shift = false; break;
+                        case SPACE_K: select = ' '; goto default;
                         default: {
                             for(int i = 0; i < _entry.Length; ++i) {
                                 if(_entry[i] == INVALID_DIGIT) {
-                                    _entry[i] = (byte)(_selection - ZERO_INDEX);
+                                    _entry[i] = select;
                                     break;
                                 }
                             }
@@ -87,61 +129,59 @@ public struct NumPad: IDrawable {
                     }
                 } break;
             }
-
-            if(_selection > NINE_INDEX) {
-                _selection = NINE_INDEX;
-            }
+            
+            if(_selection.Y < 0) _selection.Y = _currentChars.Length - 1;
+            if(_selection.Y >= _currentChars.Length) _selection.Y = 0;
+            if(_selection.X < 0) _selection.X = _currentChars[_selection.Y].Length - 1;
+            if(_selection.X >= _currentChars[_selection.Y].Length) _selection.X = 0;
         }
-    }
-    
-    int GetEntry() {
-        int num = 0;
-        for(int dec = 0; dec < _entry.Length; ++dec) {
-            if(_entry[dec] != INVALID_DIGIT) {
-                num += _entry[dec] * (int)Math.Pow(10, dec);
-            }
-        }
-
-        return num;
     }
 
 
     static StringBuilder _digitsString = new StringBuilder();
 
     public void Draw(Renderer r) {
-        r.Scale(0.4f);
-        r.Translate(1f, 2);
+        r.Scaled(2f).Draw(DIGITBOX);
+        r.Scale(2f / (float)(_chars[0].Length + 1));
+        r.Translate(-_chars[0].Length / 2 + 0.5f, _chars.Length / 2);
+        for(int y = _chars.Length - 1; y >= 0; --y) {
+            int x = 0;
+            for(; x < _chars[y].Length; ++x) {
+                string txt;
+                char current = _currentChars[y][x];
+                switch(_currentChars[y][x]) {
+                    case ENTER_K: txt = "->"; break;
+                    case BACKSPACE_K: txt = "<"; break;
+                    case SHIFTIN_K:
+                    case SHIFTOUT_K:
+                        txt = "^";
+                        break;
+                    case SPACE_K: txt = "[_]"; break;
+                    default: txt = current.ToString(); break;
+                }
+                
+                Color? boxColor = (new Vector2I(x, y) == _selection) ? r.Color : _selectedColor;
+                var boxDraw = r.Colored(boxColor);
+                boxDraw.Draw(DIGITBOX);
+                boxDraw.Draw(txt, 1f);
 
-        for(byte i = 0; i <= NINE_INDEX; ++i) {
-            string txt = "TEST";
-            switch(i) {
-                case ENTER_INDEX: txt = "Enter"; break;
-                case BACKSPACE_INDEX: txt = "<"; break;
-                default: txt = (i - ZERO_INDEX).ToString(); break;
+                r.Translate(1f, 0f);
             }
-            
-            Color? boxColor = (i == _selection) ? r.Color : _selectedColor;
-            var boxDraw = r.Colored(boxColor);
-            boxDraw.Draw(DIGITBOX);
-            boxDraw.Draw(txt, 1f);
 
-            if((i + 1) % 3 == 0) {
-                r.Translate(2f, -1f);
-            } else {
-                r.Translate(-1f, 0f);
-            }
+
+            r.Translate(-x, -1f);
         }
 
-        r.Translate(1f, -1f);
+        r.Translate((_chars[0].Length + 1) / 2, 0f);
         _digitsString.Clear();
         for(int i = 0; i < _entry.Length; ++i) {
             if(_entry[i] == INVALID_DIGIT)
-                _digitsString.Append('_');
+                break;
             else
-                _digitsString.Append((char)(_private ? '#' : _entry[i] + '0'));
+                _digitsString.Append(_private ? '#' : _entry[i]);
         }
         
-        r.Draw(_digitsString, 3);
+        r.Draw(_digitsString, 1, "Monospace");
     }
 }
 
@@ -158,20 +198,13 @@ public enum Key {
 /// A keyboard that can read from a cockpit's inputs to discern the keys that are pressed on a KEYBOARD - 
 /// no promises on a controller
 public static class ShipControllerInput {
-    /// Gets the movement indicator aligned to the seat's orientation
-    private static Vector3 GetTrueMoveIndicator(IMyShipController seat) {
-        Matrix gor;
-        seat.Orientation.GetMatrix(out gor);
-        return Vector3.TransformNormal(seat.MoveIndicator, gor);
-    }
-
     /// Read a single keypress from the move indicator 
     public static IEnumerator<Yield> ReadKey(IMyShipController seat) {
         for(;;) {
             Key? key = null;
-            var original = seat.MoveIndicator;//GetTrueMoveIndicator(seat);
+            var original = seat.MoveIndicator;
             yield return Yield.Continue;
-            Vector3 move = seat.MoveIndicator;//GetTrueMoveIndicator(seat);
+            Vector3 move = seat.MoveIndicator;
             if(move != original) {
                 if(original.Z == 0f && move.Z != 0f) {
                     if(move.Z > 0f)

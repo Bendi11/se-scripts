@@ -45,15 +45,15 @@ public struct Renderer {
     }
     
     /// Draw the given text string, scaling it to fit into the frame
-    public void Draw(StringBuilder txt, float width) {
-        var sz = _root.MeasureStringInPixels(txt, "White", 1f);
+    public void Draw(StringBuilder txt, float width, string font = "White") {
+        var sz = _root.MeasureStringInPixels(txt, font, 1f);
         var scale = Math.Max(sz.X, sz.Y);
         Draw(new MySprite() {
             Type = SpriteType.TEXT,
             Data = txt.ToString(),
             FontId = "White",
-            RotationOrScale = 60f * width / scale,
-            Position = new Vector2(0f, -(_root.MeasureStringInPixels(txt, "White", 60f * width / scale).Y / 2f) / ScaleFactor.Y),
+            RotationOrScale = 20f * width / sz.Y,
+            Position = new Vector2(0f, -(_root.MeasureStringInPixels(txt, font, 20f * width / sz.Y).Y / 2f) / ScaleFactor.Y),
         });
     }
     
