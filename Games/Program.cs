@@ -87,16 +87,22 @@ namespace IngameScript {
         IMyTextSurfaceProvider disp;
 
         IEnumerator<Yield> MainTask() {
-            yield return Tasks.Async(pad.Input(new Renderer(disp.GetSurface(0)).Colored(Color.Red)));
-            var txt = Tasks.Receive<string>();
-            Log.Error($"Entered: '{txt}' - {txt.GetHashCode()}");
+            var render = new Renderer(disp.GetSurface(0));
+            var menu = new Menu(disp as IMyShipController, new string[] { "Create Account", "Log In" });
+            yield return Tasks.Async(menu.Select(render));
+            var selected = Tasks.Receive<int>();
+            if(selected == 1) {
+                yield return Tasks.Async(pad.Input(render));
+                var txt = Tasks.Receive<string>();
+                Log.Error($"Entered: '{txt}' - {txt.GetHashCode()}");
+            }
         }
 
         public Program() {
             Log.Init(Me.GetSurface(0));
             Tasks.Init(Runtime);
             disp = GridTerminalSystem.GetBlockWithName("[SLOT] CS0-0") as IMyTextSurfaceProvider;
-            pad = new InputPad(disp as IMyShipController, 64, false, Color.White);
+            pad = new InputPad(disp as IMyShipController, 64, false, Color.Green);
             Tasks.Spawn(MainTask());
             Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }

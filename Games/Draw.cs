@@ -12,7 +12,7 @@ public struct Renderer {
     public Vector2 Translation, Cursor; 
     public Vector2 ScaleFactor;
     public float Rotation;
-    public Color? Color;
+    public Color Color;
     
     /// Get the size of the current drawing area
     public Vector2 Size {
@@ -24,8 +24,8 @@ public struct Renderer {
     /// Render the given sprite utilizing the preset transformations stored in this `Renderer`
     public void Draw(MySprite sprite) {
         sprite.Alignment = TextAlignment.CENTER;
-        if(Color.HasValue) {
-            sprite.Color = Color.Value;
+        if(!sprite.Color.HasValue) {
+            sprite.Color = Color;
         }
 
         if(sprite.Size != null) {
@@ -51,7 +51,7 @@ public struct Renderer {
         Draw(new MySprite() {
             Type = SpriteType.TEXT,
             Data = txt.ToString(),
-            FontId = "White",
+            FontId = font,
             RotationOrScale = 20f * width / sz.Y,
             Position = new Vector2(0f, -(_root.MeasureStringInPixels(txt, font, 20f * width / sz.Y).Y / 2f) / ScaleFactor.Y),
         });
@@ -63,7 +63,7 @@ public struct Renderer {
     /// Draw the given IDrawable object using the transformations stored
     public void Draw<T>(T drawable) where T: IDrawable => drawable.Draw(this);
     
-    public void SetColor(Color? c) => Color = c;
+    public void SetColor(Color c) => Color = c;
     public void Translate(float x, float y) => Translate(new Vector2(x, y));
     public void Translate(Vector2 pos) {
         pos *= ScaleFactor;
@@ -75,7 +75,7 @@ public struct Renderer {
     public void Scale(Vector2 scale) => ScaleFactor *= scale;
     public void Rotate(float r) => Rotation += r;
 
-    public Renderer Colored(Color? c) {
+    public Renderer Colored(Color c) {
         var me = Push();
         me.SetColor(c);
         return me;
@@ -118,7 +118,7 @@ public struct Renderer {
         var scale = Math.Min(root.SurfaceSize.X, root.SurfaceSize.Y);
         ScaleFactor = root.SurfaceSize / 2f;
         Rotation = 0;
-        Color = null;
+        Color = Color.White;
         _frame = null;
         Cursor = Vector2.Zero;
         Translate(new Vector2(1f, 1f));

@@ -70,7 +70,6 @@ public struct InputPad: IDrawable {
         Data = "SquareHollow",
         Position = Vector2.Zero,
         Size = Vector2.One,
-        Color = Color.White,
         RotationOrScale = 0f,
     };
     
@@ -137,7 +136,6 @@ public struct InputPad: IDrawable {
         }
     }
 
-
     static StringBuilder _digitsString = new StringBuilder();
 
     public void Draw(Renderer r) {
@@ -160,7 +158,7 @@ public struct InputPad: IDrawable {
                     default: txt = current.ToString(); break;
                 }
                 
-                Color? boxColor = (new Vector2I(x, y) == _selection) ? r.Color : _selectedColor;
+                Color boxColor = (new Vector2I(x, y) == _selection) ? _selectedColor : r.Color;
                 var boxDraw = r.Colored(boxColor);
                 boxDraw.Draw(DIGITBOX);
                 boxDraw.Draw(txt, 1f);
