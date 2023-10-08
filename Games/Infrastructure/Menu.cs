@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
-/// A scrolling list of options to select
+/// A list of options to select
 public struct Menu: IDrawable {
     string[] _choices;
     int _selected;
@@ -14,7 +14,7 @@ public struct Menu: IDrawable {
         _selected = 0;
         _input = input;
     }
-    
+
     /// Returns the index of the menu option that the user selected
     public IEnumerator<Yield> Select(Renderer r) {
         for(;;) {

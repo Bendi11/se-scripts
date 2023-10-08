@@ -20,6 +20,8 @@ public class Account {
 /// Abstraction over account authorization and manipulation that allows for handling transactions offsite if required in the future
 public class TransactionManager {
     Dictionary<string, Account> _accounts = new Dictionary<string, Account>();
+
+    private TransactionManager() {}
     
     /// Result of calling the Authorize method
     public enum AuthorizeResult {

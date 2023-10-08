@@ -47,12 +47,10 @@ public static class Tasks {
     static SortedList<double, Task> _timers = new SortedList<double, Task>();
 
     /// Handle of the currently executing task
-    static private Task _currentTask = null;
-
-    /// Get the currently executing task
     public static Task Current {
-        get { return _currentTask; }
-    }
+        get;
+        private set;
+    } = null;
     
     /// Excecute the given method asynchronously, call Receive after to receive the result of the method
     public static Yield Async(IEnumerator<Yield> proc) {
@@ -84,9 +82,9 @@ public static class Tasks {
             if(task.Status != Yield.Continue) {
                 continue;
             }
-            _currentTask = task;
+            Current = task;
             bool more = task.Process.MoveNext();
-            _currentTask = null;
+            Current = null;
             task.Status = task.Process.Current;
             if(!more || task.Status == Yield.Kill) {
                 Kill(task);
