@@ -1,5 +1,4 @@
 
-using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
@@ -14,25 +13,24 @@ public struct Menu: IDrawable {
         _selected = 0;
         _input = input;
     }
+    
+    /// Get the currently selected menu option
+    public int GetValue() => _selected;
 
-    /// Returns the index of the menu option that the user selected
-    public IEnumerator<Yield> Select(Renderer r) {
-        for(;;) {
-            r.DrawRoot(this);
-            yield return Yield.Continue;
-            yield return Tasks.Async(ShipControllerInput.ReadKey(_input));
-            Key key = Tasks.Receive<Key>();
-            switch(key) {
-                case Key.W: _selected += 1; break;
-                case Key.S: _selected -= 1; break;
-                case Key.Space: yield return Tasks.Return(_selected); break;
-            }
+    /// Process a keystroke from the user, returning true if they have finished selecting an option
+    public bool Input(Key key) {
+       switch(key) {
+           case Key.W: _selected += 1; break;
+           case Key.S: _selected -= 1; break;
+           case Key.Space: return true;
+       }
 
-            if(_selected < 0)
-                _selected = _choices.Length - 1;
-            if(_selected >= _choices.Length)
-                _selected = 0;
-        }
+       if(_selected < 0)
+           _selected = _choices.Length - 1;
+       if(_selected >= _choices.Length)
+           _selected = 0;
+
+       return false;
     }
 
     public void Draw(Renderer r) {

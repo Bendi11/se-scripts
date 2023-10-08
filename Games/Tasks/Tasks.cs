@@ -8,6 +8,8 @@ public enum Yield {
     Continue,
     Await,
     Kill,
+    /// Poisons any task that was waiting on panicking task
+    Exit,
 }
 
 
@@ -78,23 +80,31 @@ public static class Tasks {
         }
 
         for(int i = _procs.Count - 1; i >= 0; --i) {
-            var task = _procs[i];
-            if(task.Status != Yield.Continue) {
-                continue;
-            }
-            Current = task;
-            bool more = task.Process.MoveNext();
-            Current = null;
-            task.Status = task.Process.Current;
-            if(!more || task.Status == Yield.Kill) {
-                Kill(task);
-            }
-            else Runtime.UpdateFrequency |= UpdateFrequency.Once;
-
-            if(task.Status == Yield.Await) {
-                Sleep(task);
-            }
+            TickManual(_procs[i]); 
         }
+    }
+    
+    /// Execute another tick of the given task
+    public static void TickManual(Task task) {
+       if(task.Status != Yield.Continue) {
+           return;
+       }
+        
+       var oldCurrent = Current;
+       Current = task;
+       bool more = task.Process.MoveNext();
+       Current = oldCurrent;
+       task.Status = task.Process.Current;
+       if(!more || task.Status == Yield.Kill) {
+           Kill(task);
+       }
+       else Runtime.UpdateFrequency |= UpdateFrequency.Once;
+
+       if(task.Status == Yield.Await) {
+           Sleep(task);
+       } else if(task.Status == Yield.Exit) {
+           Exit(task);
+       }
     }
 
     /// Put the given task to sleep
@@ -115,6 +125,18 @@ public static class Tasks {
             } else {
                 Kill(task.Waiter);
             }
+            task.Waiter = null;
+        }
+    }
+    
+    /// Force the given task to stop, also killing any tasks that were waiting on the task to finish
+    public static void Exit(Task task) {
+        task.Status = Yield.Exit;
+        task.Process.Dispose();
+        task.Process = null;
+        _procs.Remove(task);
+        if(task.Waiter != null) {
+            Exit(task.Waiter);
             task.Waiter = null;
         }
     }

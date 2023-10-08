@@ -29,6 +29,8 @@ public class LoginTerminal {
     }
 
     List<MyDetectedEntityInfo> _detected = new List<MyDetectedEntityInfo>();
+    Channel<Key> _inputChannel;
+    Task _inputProcess;
     
     /// Detect a player in the seat and start the login process
     public IEnumerator<Yield> OnSensor() {
@@ -55,11 +57,35 @@ public class LoginTerminal {
                 _detected.Clear();
                 yield return Yield.Continue;
             }
-
-            yield return Tasks.Async(ShipControllerInput.ReadKey(_input));
-            Key key = Tasks.Receive<Key>();
+            
+            _inputChannel = new Channel<Key>(Tasks.Current);
+            _inputProcess = Tasks.Spawn(ReadInputTask());
+            _inputProcess.Waiter = Tasks.Current;
+            
+            yield return _inputChannel.AwaitReady();
+            Key key = _inputChannel.Receive();
         } finally {
             _inProgress = false;
+            if(_inputProcess != null) {
+                Tasks.Exit(_inputProcess);
+            }
+
+            _inputProcess = null;
+            _inputChannel = null;
+        }
+    }
+    
+    /// Read keys from the keyboard in a loop until the task is killed
+    public IEnumerator<Yield> ReadInputTask() {
+        var readKeys = new Task(ShipControllerInput.ReadKeys(_input, _inputChannel));
+        readKeys.Waiter = Tasks.Current;
+
+        for(;;) {
+            yield return Yield.Continue;
+            Tasks.TickManual(readKeys);
+            if(!_input.IsUnderControl) {
+                yield return Yield.Exit;
+            }
         }
     }
 }
