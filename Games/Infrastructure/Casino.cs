@@ -3,12 +3,12 @@ using System.Collections.Generic;
 
 /// Global state containing all blocks on the casino
 public class Casino {
-    public TransactionManager _mgr {
+    public TransactionManager Transact {
         get;
         private set;
     }
 
-    public Casino Instance {
+    public static Casino Instance {
         get;
         private set;
     } = new Casino();

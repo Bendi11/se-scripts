@@ -10,16 +10,7 @@ using VRageMath;
 public struct InputPad: IDrawable {
     /// Entered digits
     char[] _entry;
-
-    int _enteredLen {
-        get {
-            int len = 0;
-            for(;len < _entry.Length; ++len) {
-                if(_entry[len] == INVALID_DIGIT) break;
-            }
-            return len;
-        }
-    }
+    int _enteredLen;
 
     const char
         INVALID_DIGIT = (char)0,
@@ -78,13 +69,16 @@ public struct InputPad: IDrawable {
     /// max_digits should not be 0
     public InputPad(IMyShipController seat, int max_digits, bool isPrivate, Color selectedColor) {
         _entry = new char[max_digits];
-        for(int i = 0; i < max_digits; ++i) _entry[i] = INVALID_DIGIT;
+        _enteredLen = 0;
         _private = isPrivate;
         _seat = seat;
         _selectedColor = selectedColor;
         _selection = Vector2I.Zero;
         _shift = false;
     }
+    
+    /// Remove all entered characters from the input buffer
+    public void Clear() => _enteredLen = 0;
     
     /// Get the text that the user has entered on the keyboard
     public string GetEntry() => new String(_entry).Substring(0, _enteredLen);
@@ -102,23 +96,17 @@ public struct InputPad: IDrawable {
                switch(select) {
                    case ENTER_K: return true;
                    case BACKSPACE_K: {
-                       for(int i = _entry.Length - 1; i >= 0; --i) {
-                           if(_entry[i] != INVALID_DIGIT) {
-                               _entry[i] = INVALID_DIGIT;
-                               break;
-                           }
-                       }
+                        if(_enteredLen > 0)
+                            _enteredLen -= 1;
                    } break;
                    case SHIFTIN_K: _shift = true; break;
                    case SHIFTOUT_K: _shift = false; break;
                    case SPACE_K: select = ' '; goto default;
                    default: {
-                       for(int i = 0; i < _entry.Length; ++i) {
-                           if(_entry[i] == INVALID_DIGIT) {
-                               _entry[i] = select;
-                               break;
-                           }
-                       }
+                        if(_enteredLen < _entry.Length) {
+                            _entry[_enteredLen] = select;
+                            _enteredLen += 1;
+                        } 
                    } break;
                }
            } break;
@@ -168,11 +156,8 @@ public struct InputPad: IDrawable {
 
         r.Translate((_chars[0].Length + 1) / 2, 0f);
         _digitsString.Clear();
-        for(int i = 0; i < _entry.Length; ++i) {
-            if(_entry[i] == INVALID_DIGIT)
-                break;
-            else
-                _digitsString.Append(_private ? '#' : _entry[i]);
+        for(int i = 0; i < _enteredLen; ++i) {
+            _digitsString.Append(_private ? '#' : _entry[i]);
         }
         
         r.Draw(_digitsString, 1, "Monospace");

@@ -87,7 +87,8 @@ namespace IngameScript {
         IMyTextSurfaceProvider disp;
 
         IEnumerator<Yield> MainTask() {
-            yield return Yield.Exit; 
+            var term = new LoginTerminal(disp as IMyCockpit);
+            yield return Tasks.Async(term.OnSensor());
         }
 
         public Program() {

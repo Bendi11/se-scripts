@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Sandbox.ModAPI.Ingame;
@@ -80,7 +81,11 @@ public static class Tasks {
         }
 
         for(int i = _procs.Count - 1; i >= 0; --i) {
-            TickManual(_procs[i]); 
+            try {
+                TickManual(_procs[i]); 
+            } catch(Exception e) {
+                Log.Error($"In task: {e}");
+            }
         }
     }
     
@@ -132,8 +137,10 @@ public static class Tasks {
     /// Force the given task to stop, also killing any tasks that were waiting on the task to finish
     public static void Exit(Task task) {
         task.Status = Yield.Exit;
-        task.Process.Dispose();
-        task.Process = null;
+        if(task.Process != null) {
+            task.Process.Dispose();
+            task.Process = null;
+        }
         _procs.Remove(task);
         if(task.Waiter != null) {
             Exit(task.Waiter);

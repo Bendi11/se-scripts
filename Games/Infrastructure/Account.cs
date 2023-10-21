@@ -8,13 +8,13 @@ public class Account {
     /// Username as entered by the user
     public string Name;
     /// Hash of the user's password
-    long _passwordHash;
+    public long PasswordHash;
     /// The value that actually tracks how many chips this account owns
-    long _chipsBalance;
+    long _chipsBalance = 200;
     /// Currently logged in user
     Session _session = null;
 
-    public bool ValidPassword(long hash) => _passwordHash == hash;
+    public bool ValidPassword(long hash) => PasswordHash == hash;
 }
 
 /// Abstraction over account authorization and manipulation that allows for handling transactions offsite if required in the future
@@ -29,25 +29,45 @@ public class TransactionManager {
         InvalidPassword,
         Good,
     }
+    
+    /// Result of calling the CreateAccount method
+    public enum CreateAccountResult {
+        AlreadyExists,
+        Good,
+    }
 
     /// Create a new active session for the user identified by the given entity ID
-    public Yield Authorize(string username, string password, long id, out Session token, out AuthorizeResult result) {
+    public void Authorize(string username, string password, long id, out Session token, out AuthorizeResult result) {
         Account account;
         if(_accounts.TryGetValue(username, out account)) {
             if(account.ValidPassword(PasswordHash(password))) {
                 token = null;
                 result = AuthorizeResult.InvalidPassword;
-                return Yield.Continue;
             }
 
             token = new Session() { EntityId = id };
             result = AuthorizeResult.Good;
-            return Yield.Continue;
         } else {
             token = null;
             result = AuthorizeResult.InvalidUsername;
-            return Yield.Continue;
         }
+    }
+    
+    /// Create a new account with the given credentials
+    public void CreateAccount(string username, string password, out CreateAccountResult result) {
+        Account existing;
+        if(_accounts.TryGetValue(username, out existing)) {
+            result = CreateAccountResult.AlreadyExists;
+            return;
+        }
+
+        var account = new Account() {
+            Name = username,
+            PasswordHash = PasswordHash(password),
+        };
+
+        _accounts.Add(username, account);
+        result = CreateAccountResult.Good;
     }
     
     /// End the given session, ensuring that all operations on it are finished before revoking further access

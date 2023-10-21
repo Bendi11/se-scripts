@@ -31,6 +31,9 @@ public class LoginTerminal {
     List<MyDetectedEntityInfo> _detected = new List<MyDetectedEntityInfo>();
     Channel<Key> _inputChannel;
     Task _inputProcess;
+
+    string _username;
+    string _password;
     
     /// Detect a player in the seat and start the login process
     public IEnumerator<Yield> OnSensor() {
@@ -62,8 +65,33 @@ public class LoginTerminal {
             _inputProcess = Tasks.Spawn(ReadInputTask());
             _inputProcess.Waiter = Tasks.Current;
             
-            yield return _inputChannel.AwaitReady();
-            Key key = _inputChannel.Receive();
+            int menuSelection;
+            for(;;) {
+                yield return _inputChannel.AwaitReady();
+                Key key = _inputChannel.Receive();
+
+                if(_loginCreateSelection.Input(key)) {
+                    menuSelection = _loginCreateSelection.GetValue();
+                    break;
+                }
+
+                _display.DrawRoot(_loginCreateSelection);
+                yield return Yield.Continue;
+            }
+
+            yield return Yield.Continue;
+            
+            foreach(var y in GetCredentials()) { yield return y; }
+
+            switch(menuSelection) {
+                case 0: {
+                    
+                } break;
+
+                case 1: {
+
+                } break;
+            }
         } finally {
             _inProgress = false;
             if(_inputProcess != null) {
@@ -72,9 +100,40 @@ public class LoginTerminal {
 
             _inputProcess = null;
             _inputChannel = null;
+            _username = "";
+            _password = "";
         }
     }
     
+    /// Set the _username and _password fields to their entered values
+    public IEnumerable<Yield> GetCredentials() {
+        for(;;) {
+            yield return _inputChannel.AwaitReady();
+            if(_keyboard.ProcessKey(_inputChannel.Receive())) {
+                _username = _keyboard.GetEntry();
+                break;
+            }
+
+            _display.DrawRoot(_keyboard);
+            yield return Yield.Continue;
+        }
+
+        _keyboard.Clear();
+
+        for(;;) {
+            yield return _inputChannel.AwaitReady();
+            if(_keyboard.ProcessKey(_inputChannel.Receive())) {
+                _password = _keyboard.GetEntry();
+                break;
+            }
+
+            _display.DrawRoot(_keyboard);
+            yield return Yield.Continue;
+        }
+
+        _keyboard.Clear();
+    }
+
     /// Read keys from the keyboard in a loop until the task is killed
     public IEnumerator<Yield> ReadInputTask() {
         var readKeys = new Task(ShipControllerInput.ReadKeys(_input, _inputChannel));
