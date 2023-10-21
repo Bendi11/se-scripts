@@ -14,7 +14,7 @@ public enum Yield {
 }
 
 
-/// Internal state for a single task plate, containing the return value
+/// Internal state for a single task, containing the return value
 public class Task {
     /// Used for both the return value of the task and for notification values received by the task
     public object Scratch;
@@ -81,11 +81,7 @@ public static class Tasks {
         }
 
         for(int i = _procs.Count - 1; i >= 0; --i) {
-            try {
-                TickManual(_procs[i]); 
-            } catch(Exception e) {
-                Log.Error($"In task: {e}");
-            }
+            TickManual(_procs[i]); 
         }
     }
     

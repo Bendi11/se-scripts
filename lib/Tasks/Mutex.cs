@@ -1,4 +1,3 @@
-
 using System.Collections.Generic;
 
 /// A mutex allowing only a single task access to a resource at once
